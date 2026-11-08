@@ -1,0 +1,69 @@
+plugins {
+    id 'com.android.application'
+}
+
+// The Go binary built by scripts/build-magpie.sh is copied into
+// src/main/assets/bin/magpie by scripts/sync-binary.sh. It is a fully
+// static, CGO-free ELF for android/arm64.
+
+android {
+    namespace 'com.magpie.android'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.magpie.android"
+        // Android 10+ refuses exec() on files inside an app's home directory
+        // for apps that target SDK 29 or newer (W^X policy,
+        // developer.android.com/about/versions/10/behavior-changes-all
+        // #execute-permission). Magpie is a server: it has to exec its own
+        // binary, so it stays at 28 — the same reason Termux's F-Droid build
+        // is pinned at 28. GatewayService additionally tries
+        // /system/bin/linker64 as a fallback, so a newer targetSdk would
+        // still work on most devices.
+        targetSdk 28
+        minSdk 24
+
+        versionCode 1
+        versionName "1.0"
+        resValue "string", "default_port", "3425"
+    }
+
+    buildTypes {
+        debug {
+            debuggable true
+            jniDebuggable true
+            versionNameSuffix "-debug"
+        }
+        release {
+            debuggable false
+            minifyEnabled false
+            shrinkResources false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            versionNameSuffix "-release"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    // Nothing native ships as a JNI lib; the Go binary lives in assets/.
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging false
+        }
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+        warningsAsErrors false
+    }
+
+    // The ~50 MB ELF in assets/ is stored uncompressed so the first-run
+    // extraction is a fast copy instead of a decompression pass.
+    aaptOptions {
+        noCompress "bin"
+    }
+}

@@ -1,0 +1,11 @@
+// Magpie for Android — the Go gateway, wrapped in a WebView.
+//
+// Build:   ./gradlew :app:assembleDebug
+// Output:  app/build/outputs/apk/debug/app-debug.apk
+//
+// See README.md for the full picture (what the wrapper does, why
+// targetSdk is 28, how the binary is extracted and run).
+
+plugins {
+    id 'com.android.application' version '8.5.2' apply false
+}

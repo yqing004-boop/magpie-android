@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 平台主题：整个 App 就一个 WebView + 一张顶栏卡片，不需要 Material 组件库。 -->
+    <style name="Theme.Magpie" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#F4F4F8</item>
+        <!-- 沉浸：状态栏和导航栏都透明，内容铺到屏幕边（代码里还会再设一遍，
+             因为用户可能在设置里换背景色）。 -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+
+    <!-- 底部弹层：从底下顶上来，宽度拉满。必须是 floating，否则 Dialog 会变成一个
+         全屏窗口，gravity 设不动，内容会跑到屏幕顶上。 -->
+    <style name="Theme.Magpie.Sheet" parent="@android:style/Theme.Material.Light.Dialog">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:windowMinWidthMajor">100%</item>
+        <item name="android:windowMinWidthMinor">100%</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowCloseOnTouchOutside">true</item>
+    </style>
+</resources>

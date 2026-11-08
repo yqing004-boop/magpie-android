@@ -1,0 +1,24 @@
+# Build outputs and local signing secrets
+/build-local/
+/dist/
+/build/
+/.gradle/
+/app/build/
+*.apk
+*.apk.idsig
+*.aab
+*.keystore
+*.jks
+*.p12
+local.properties
+
+# Third-party payloads and downloaded tools (not licensed for blanket re-distribution)
+/app/src/main/assets/bin/
+/bin/
+/bin-bun/
+/scripts/tools/
+/META-INF/
+
+# Local notes and generated files
+/README.magisk.md.bak
+*.log

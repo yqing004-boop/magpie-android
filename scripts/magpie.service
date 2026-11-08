@@ -1,0 +1,278 @@
+#!/system/bin/sh
+# magpie 服务控制: magpie.service {start|stop|restart|status}
+
+export PATH="/data/adb/magisk:/data/adb/ksu/bin:/data/adb/ap/bin:$PATH"
+
+CONF=/data/adb/magpie/scripts/magpie.config
+[ -f "$CONF" ] || CONF="$(dirname "$0")/magpie.config"
+. "$CONF"
+
+BIN="$magpie_path/bin/magpie"
+RUN="$magpie_path/run"
+PIDFILE="$RUN/magpie.pid"
+LOG="$RUN/magpie.log"
+
+WEB_HOST=${MAGPIE_WEB_ADDR:-"${MAGPIE_ADDR%:*}:3430"}
+WEB_PORT=${WEB_HOST##*:}
+
+# 密钥固定, 否则每次重启 WebUI 链接都变
+WEB_KEY_FILE="$magpie_path/data/web.key"
+if [ -s "$WEB_KEY_FILE" ]; then
+  WEB_KEY=$(cat "$WEB_KEY_FILE" 2>/dev/null)
+else
+  WEB_KEY=$(tr -dc 'a-f0-9' < /dev/urandom 2>/dev/null | head -c 32)
+  [ -n "$WEB_KEY" ] && echo "$WEB_KEY" > "$WEB_KEY_FILE"
+fi
+# 根路径返回 401, 浏览器必须带 key
+WEB_URL="http://127.0.0.1:$WEB_PORT/?k=$WEB_KEY"
+
+log() { echo "$(date +'%H:%M:%S') [$1] $2"; }
+
+# ---------- 日志清理 ----------
+# 超过 5 MB 归档为 .1, 只留一份
+LOG_MAX_BYTES=5242880
+
+rotate_log() {
+  _f="$1"
+  [ -f "$_f" ] || return 0
+  _sz=$(stat -c %s "$_f" 2>/dev/null)
+  [ -n "$_sz" ] || return 0
+  if [ "$_sz" -gt "$LOG_MAX_BYTES" ] 2>/dev/null; then
+    mv -f "$_f" "$_f.1" 2>/dev/null && {
+      : > "$_f" 2>/dev/null
+      chmod 0600 "$_f" 2>/dev/null
+      log Info "日志超过 5MB, 已归档为 ${_f##*/}.1"
+    }
+  fi
+}
+
+clean_logs() {
+  rotate_log "$LOG"
+}
+
+# ---------- Android 网络适配 ----------
+# DNS 走公网: Go 在 Android 上没有 resolv.conf 会去查 ::1:53。
+# 用 DNS_LOCAL_HOSTNAMES 而不是本地 dnsmasq —— 监听 53 会和系统热点的
+# dnsmasq 抢端口, 导致热点刚开就被撤销 (v0.2 的坑, 详见 CHANGELOG)。
+DNS_SERVERS=${MAGPIE_DNS:-"223.5.5.5 119.29.29.29 8.8.8.8"}
+USER_STOPPED="$RUN/.user_stopped"
+CA_BUNDLE="$magpie_path/data/certs/ca-bundle.crt"
+
+mkdir -p "$RUN" "$magpie_path/data"
+
+# ---------- 局域网 IP ----------
+# 排除 fake-ip (mihomo/Clash 的 198.18.0.0/15), 否则日志里是连不上的地址。
+# status.sh 用同一套规则。
+is_usable_lan_ip() {
+  case "$1" in
+    ''|0.0.0.0|127.*|169.254.*|198.18.*|198.19.*) return 1 ;;
+  esac
+  return 0
+}
+
+lan_ip() {
+  # 优先 Wi-Fi, 其次蜂窝共享口
+  for _if in wlan0 wlan1 ccmni0 ccmni1; do
+    for _a in $(ip -4 addr show "$_if" 2>/dev/null | sed -n 's/.*inet \([0-9.]*\)\/.*/\1/p'); do
+      is_usable_lan_ip "$_a" && { echo "$_a"; return 0; }
+    done
+  done
+  # 兜底: 任意网卡
+  for _a in $(ip -4 -o addr show 2>/dev/null | sed -n 's/.*inet \([0-9.]*\)\/.*/\1/p'); do
+    is_usable_lan_ip "$_a" && { echo "$_a"; return 0; }
+  done
+  return 1
+}
+
+running() {
+  # pid 文件不可靠; 进程真在就必须认, 否则守护会重复拉起
+  if [ -f "$PIDFILE" ]; then
+    pid=$(cat "$PIDFILE" 2>/dev/null)
+    case "$pid" in
+      ''|*[!0-9]*) : ;;
+      *) kill -0 "$pid" 2>/dev/null && { echo "$pid"; return 0; } ;;
+    esac
+    rm -f "$PIDFILE" 2>/dev/null
+  fi
+
+  pid=$(pidof magpie 2>/dev/null | tr ' ' '\n' | head -1)
+  if [ -n "$pid" ] && [ -d "/proc/$pid" ]; then
+    echo "$pid" > "$PIDFILE" 2>/dev/null
+    echo "$pid"
+    return 0
+  fi
+  return 1
+}
+
+# ---------- 旧版残留清理 ----------
+# v0.2 自带 dnsmasq 监听 ::1:53 给 Go 用, 升级后必须停掉, 否则它继续占着
+# 53 端口, 系统热点的 dnsmasq 起不来, 热点又会被撤销 (v0.2 的老坑)。
+# 两条底线:
+#   1. 绝不 pkill dnsmasq —— 系统热点那个也叫 dnsmasq, 杀了热点直接废
+#   2. 不能只信 pid 文件 —— 覆盖安装时老进程还活着, pid 文件却是重启前的旧值,
+#      按 pid 杀只会杀错或空跑, 这正是"刷了新包旧 dnsmasq 还在"的原因
+# 认人只认命令行: 老版监听 listen-address=::1,
+# 系统那个是 --listen-mark 0xf0063 --user dns_tether, 混不了。
+legacy_kind() {
+  # $1=pid; 命中则打印 dnsmasq 或 keep, 认不出返回 1
+  case "$1" in ''|*[!0-9]*) return 1 ;; esac
+  [ -r "/proc/$1/cmdline" ] || return 1
+  _cl=$(tr '\0' ' ' < "/proc/$1/cmdline" 2>/dev/null)
+  case "$_cl" in
+    *listen-address=::1*) echo dnsmasq; return 0 ;;
+    "sleep 2147483647 "*)
+      # 只认撑着 dnsmasq.fifo 的那个, 不碰别的模块的 sleep
+      ls -l "/proc/$1/fd" 2>/dev/null | grep -q 'dnsmasq\.fifo' && { echo keep; return 0; }
+      ;;
+  esac
+  return 1
+}
+
+# 先 TERM 再 KILL, 并等到进程真的消失才返回
+stop_pid() {
+  kill "$1" 2>/dev/null || return 0
+  _i=0
+  while kill -0 "$1" 2>/dev/null && [ "$_i" -lt 20 ]; do
+    sleep 0.1; _i=$((_i + 1))
+  done
+  kill -9 "$1" 2>/dev/null
+  return 0
+}
+
+cleanup_legacy_dnsmasq() {
+  _cands="$(cat "$RUN/dnsmasq.pid" 2>/dev/null) $(cat "$RUN/dnsmasq.keep.pid" 2>/dev/null)"
+  for _n in dnsmasq sleep; do
+    _cands="$_cands $(pidof "$_n" 2>/dev/null)"
+  done
+
+  _seen=""; _found=""
+  for _p in $_cands; do
+    case " $_seen " in *" $_p "*) continue ;; esac
+    _kind=$(legacy_kind "$_p") || continue
+    _seen="$_seen $_p"
+    stop_pid "$_p"
+    _found="$_found $_p($_kind)"
+  done
+
+  [ -n "$_found" ] && log Info "已清理旧版 dnsmasq 残留:$_found"
+  rm -f "$RUN/dnsmasq.pid" "$RUN/dnsmasq.keep.pid" "$RUN/dnsmasq.fifo" "$RUN/dnsmasq.log" 2>/dev/null
+  return 0
+}
+
+# ---------- CA 证书 ----------
+# Go 找不到 Android 的证书库, 合并系统证书通过 SSL_CERT_FILE 给它
+ensure_ca_bundle() {
+  if [ -s "$CA_BUNDLE" ]; then
+    return 0
+  fi
+  mkdir -p "$(dirname "$CA_BUNDLE")"
+  if [ -d /system/etc/security/cacerts ]; then
+    cat /system/etc/security/cacerts/*.0 > "$CA_BUNDLE" 2>/dev/null
+    if [ -s "$CA_BUNDLE" ]; then
+      _n=$(grep -c 'BEGIN CERTIFICATE' "$CA_BUNDLE" 2>/dev/null)
+      log Info "已生成 CA 证书包 ($_n 个)"
+      return 0
+    fi
+  fi
+  log Warn "无法生成 CA 证书包, HTTPS 请求可能失败"
+  return 1
+}
+
+# 让终端里能直接敲 magpie
+ensure_cli() {
+  _sd=$(dirname "$0")
+  case "$_sd" in
+    /*) _cli="$_sd/magpie-cli.sh" ;;
+    *)  _cli="$(pwd)/$_sd/magpie-cli.sh" ;;
+  esac
+  [ -f "$_cli" ] || return 0
+  chmod 755 "$_cli" 2>/dev/null
+  for _p in /data/adb/ksu/bin /data/adb/magisk /data/adb/ap/bin; do
+    [ -d "$_p" ] || continue
+    [ "$(readlink "$_p/magpie" 2>/dev/null)" = "$_cli" ] && return 0
+    rm -f "$_p/magpie" 2>/dev/null
+    ln -sf "$_cli" "$_p/magpie" 2>/dev/null && return 0
+  done
+}
+
+start() {
+  rm -f "$USER_STOPPED" 2>/dev/null
+  # 清理必须放在"已在运行就早退"之前: 覆盖安装后 magpie 往往还活着,
+  # 早退分支一旦先返回, 旧 dnsmasq 就永远清不掉, 只能等下次重启。
+  cleanup_legacy_dnsmasq
+  if pid=$(running); then
+    log Info "已在运行 (PID $pid)"
+    return 0
+  fi
+
+  [ -x "$BIN" ] || { log Error "找不到 $BIN"; return 1; }
+
+  # 必须在进程打开日志 fd 之前归档, 之后 mv 等于白做
+  clean_logs
+  ensure_cli
+  ensure_ca_bundle
+
+  export MAGPIE_ADDR MAGPIE_HOME="$magpie_path/data"
+  export HOME="$magpie_path/data" TMPDIR="$RUN"
+  export MAGPIE_WEB_KEY="$WEB_KEY"
+  [ -s "$CA_BUNDLE" ] && export SSL_CERT_FILE="$CA_BUNDLE"
+  export DNS_LOCAL_HOSTNAMES="$DNS_SERVERS"
+  # magpie 自带的是 glibc 版 Bun, Android 上跑不起来
+  _bun=$(ls "$magpie_path/data/.cache/magpie/bun"/*/magpie-bun 2>/dev/null | head -1)
+  [ -n "$_bun" ] && export MAGPIE_BUN="$_bun"
+
+  # 不加 --web 就只有纯 API, 没有网页
+  ( cd "$magpie_path/data" && exec "$BIN" serve --web="$WEB_HOST" ) >>"$LOG" 2>&1 &
+  echo $! > "$PIDFILE"
+  echo "$WEB_URL" > "$RUN/web.url"
+  chmod 600 "$RUN/web.url" 2>/dev/null
+
+  sleep 2
+  if pid=$(running); then
+    log Info "已启动 网关 http://$MAGPIE_ADDR"
+    log Info "      WebUI $WEB_URL (PID $pid)"
+    # 二进制自己报的地址会被 fake-ip 骗, 这里自己算
+    _lan=$(lan_ip)
+    if [ -n "$_lan" ]; then
+      echo "http://$_lan:$WEB_PORT" > "$RUN/lan.url" 2>/dev/null
+      log Info "      局域网 http://$_lan:$WEB_PORT"
+    else
+      rm -f "$RUN/lan.url" 2>/dev/null
+    fi
+  else
+    rm -f "$PIDFILE" 2>/dev/null
+    if grep -q "address already in use" "$LOG" 2>/dev/null; then
+      log Error "启动失败: 端口被占用, 可能上次进程还没退出。详见 $LOG"
+    else
+      log Error "启动失败, 详见 $LOG"
+    fi
+    return 1
+  fi
+}
+
+stop() {
+  # 打标记, 免得 service.sh 的守护又把它拉起来
+  : > "$USER_STOPPED" 2>/dev/null
+  cleanup_legacy_dnsmasq
+  pid=$(running) || { log Info "未在运行"; return 0; }
+  log Warn "正在停止 (PID $pid)"
+  kill -15 "$pid" 2>/dev/null
+  i=0
+  while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 20 ]; do
+    sleep 0.1; i=$((i + 1))
+  done
+  kill -9 "$pid" 2>/dev/null
+  rm -f "$PIDFILE"
+}
+
+sync_status() {
+  [ -f "$(dirname "$0")/status.sh" ] && sh "$(dirname "$0")/status.sh" >/dev/null 2>&1
+}
+
+case "$1" in
+  start)   start; sync_status ;;
+  stop)    stop;  sync_status ;;
+  restart) stop; start; sync_status ;;
+  status)  pid=$(running) && echo "running (PID $pid)" || echo "stopped" ;;
+  *)       echo "用法: $0 {start|stop|restart|status}"; exit 1 ;;
+esac

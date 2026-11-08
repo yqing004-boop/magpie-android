@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Magpie</string>
+
+    <string name="menu_settings">设置</string>
+    <string name="status_starting">正在启动网关…</string>
+    <string name="status_not_answering">网关没有响应</string>
+    <string name="status_not_running">网关没有在运行</string>
+    <string name="status_show_log">查看日志</string>
+    <string name="status_settings">设置</string>
+    <string name="status_retry">重试</string>
+
+    <string name="settings_title">设置</string>
+    <string name="settings_summary">网关端口、局域网访问与更新源</string>
+    <string name="settings_gateway_port">网关端口</string>
+    <string name="settings_gateway_port_hint">3425 是 magpie 的默认值</string>
+    <string name="settings_lan">允许局域网访问</string>
+    <string name="settings_lan_hint">同一 Wi-Fi 下的其他设备可以连上这台手机的网关</string>
+    <string name="settings_update_feed">更新源</string>
+    <string name="settings_update_feed_hint">留空则使用 magpie 官方源</string>
+    <string name="settings_save">保存并重启</string>
+    <string name="settings_restart_now">立即重启网关</string>
+    <string name="settings_check_update">检查 magpie 更新</string>
+
+    <string name="menu_check_update">检查更新</string>
+    <string name="header_starting">启动中…</string>
+    <string name="header_running">运行中</string>
+    <string name="header_stopped">已停止</string>
+    <string name="header_gateway_placeholder">127.0.0.1:3425</string>
+    <string name="header_copied">已复制 %s</string>
+
+    <string name="sheet_title">菜单</string>
+    <string name="sheet_subtitle">网关 %1$s · 网页界面 %2$s</string>
+
+    <string name="act_reload">重新加载界面</string>
+    <string name="act_reload_sub">网关的页面重新读一遍，不重启网关本身</string>
+    <string name="act_browser">用浏览器打开</string>
+    <string name="act_browser_sub">交给系统浏览器，方便用电脑上的工具查看</string>
+    <string name="act_copy">复制网关地址</string>
+    <string name="act_copy_sub">把 %s 复制到剪贴板</string>
+    <string name="act_restart">重启网关</string>
+    <string name="act_restart_sub">先停掉再启动，改过密钥或配置后用得上</string>
+    <string name="act_stop">停止网关</string>
+    <string name="act_stop_sub">agent 连不上，直到再启动为止</string>
+    <string name="act_log">查看日志</string>
+    <string name="act_log_sub">网关最后写下的三百行输出</string>
+    <string name="act_settings">设置</string>
+    <string name="act_settings_sub">端口、局域网访问、外观与开机启动</string>
+    <string name="act_battery">忽略电池优化</string>
+    <string name="act_battery_sub">让系统不要在熄屏后冻结网关</string>
+    <string name="act_update">检查 magpie 更新</string>
+    <string name="act_update_sub">拉 GitHub 上的新版二进制，不用重装 APK</string>
+    <string name="act_about">关于</string>
+    <string name="act_about_sub">官方仓库、移植作者与许可证</string>
+
+    <string name="about_app">Magpie for Android</string>
+    <string name="about_upstream">magpie 官方项目</string>
+    <string name="about_repo_url">github.com/yetone/magpie</string>
+    <string name="about_author">APK 移植制作者</string>
+    <string name="about_author_name_text">酷安 @图图没耳朵</string>
+    <string name="about_author_url_text">coolapk.com/u/1642567</string>
+    <string name="about_license_text">magpie 核心：Copyright © 2026 yetone · MIT License</string>
+    <string name="about_unofficial">非官方移植，与 yetone 无关；出问题先看菜单里的日志</string>
+    <string name="about_ai">由 AI 辅助完成</string>
+    <string name="about_notice">查看 magpie MIT 许可证全文</string>
+    <string name="about_ver">外壳 %1$s · 内核 %2$s</string>
+    <string name="act_done">已交给系统</string>
+
+    <string name="settings_appearance">外观</string>
+    <string name="settings_monet">莫奈取色</string>
+    <string name="settings_monet_hint">从系统壁纸里取一种强调色（需要 Android 12 及以上）</string>
+    <string name="settings_monet_unavailable">这个系统版本不支持动态取色</string>
+    <string name="settings_bg">自定义背景颜色</string>
+    <string name="settings_header_bg">顶栏卡片颜色</string>
+    <string name="settings_page_bg">内容区背景颜色</string>
+    <string name="settings_bg_hint">只改 App 外壳（顶栏、菜单、设置页）；页面本身的深色/浅色跟随 magpie 自己的主题</string>
+    <string name="settings_bg_default">跟随系统</string>
+    <string name="menu_desktop_layout">桌面宽屏排版</string>
+    <string name="menu_narrow_layout">手机窄屏排版</string>
+    <string name="menu_browser">用浏览器打开</string>
+    <string name="toast_desktop">已切到桌面宽屏排版（设置 tab 全铺开）</string>
+    <string name="toast_narrow">已切回手机排版</string>
+
+    <string name="update_title">更新</string>
+    <string name="update_current">当前版本</string>
+    <string name="update_latest">最新版本</string>
+    <string name="update_unknown">…</string>
+    <string name="update_never">还没检查过。点下面的按钮问一次 GitHub。</string>
+    <string name="update_check">检查更新</string>
+    <string name="update_now">下载并安装</string>
+    <string name="update_page">打开发布页</string>
+    <string name="update_rollback">回滚到上一个版本</string>
+    <string name="update_notes">更新说明</string>
+    <string name="update_checking">正在检查更新…</string>
+    <string name="update_up_to_date">已是最新版本</string>
+    <string name="update_available">有新版本，可以下载</string>
+    <string name="update_done">已更新，正在重启网关…</string>
+    <string name="update_rollback_done">已回滚，正在重启网关…</string>
+    <string name="update_confirm_rollback">把 magpie 换回上一个版本？</string>
+    <string name="update_working">正在更新，别切走太久…</string>
+</resources>

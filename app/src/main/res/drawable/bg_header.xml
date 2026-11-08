@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 顶部那张卡片：浅米色圆角，颜色会被「莫奈取色 / 自定义背景」覆盖。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#FBF2EE" />
+    <corners android:radius="24dp" />
+</shape>

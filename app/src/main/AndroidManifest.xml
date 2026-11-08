@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- magpie's Web UI is served on the phone itself and calls out to model
+         providers, so it needs the network. WAKE_LOCK keeps the CPU alive
+         while a gateway request is in flight. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Android 9+：前台服务必须声明这个权限，否则 startForeground 直接
+         SecurityException（targetSdk 28 也躲不开）。 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Android 13+ 的通知权限：targetSdk 28 的包里系统默认给，写上是明白。 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 「忽略电池优化」按钮要把系统那个授权页拉起来 -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <application
+        android:name=".App"
+        android:allowBackup="false"
+        android:icon="@drawable/ic_magpie_bird"
+        android:label="@string/app_name"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:usesCleartextTraffic="true"
+        android:roundIcon="@drawable/ic_magpie_bird"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Magpie">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:label="@string/settings_title"
+            android:parentActivityName=".MainActivity" />
+
+        <!-- 更新页：问 GitHub（magpie 的发布清单）、下载新的 ELF、重启网关。
+             拉的是二进制，不是 APK，所以不需要「安装未知应用」权限。 -->
+        <activity
+            android:name=".UpdateActivity"
+            android:exported="false"
+            android:label="@string/update_title"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"
+            android:parentActivityName=".MainActivity" />
+
+        <!-- No foregroundServiceType is declared on purpose: GatewayService
+             calls the two-argument startForeground(), and targetSdk 28 keeps
+             the Android 14 type requirements from applying. -->
+        <service
+            android:name=".GatewayService"
+            android:exported="false" />
+
+    </application>
+</manifest>

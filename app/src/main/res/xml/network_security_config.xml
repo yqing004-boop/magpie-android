@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 9（API 28）起默认禁止明文 HTTP。这个 App 的 WebView 打开的是
+     本机 127.0.0.1 上 magpie 自己的 Web UI（http://127.0.0.1:3430），
+     没有明文许可就直接 ERR_CLEARTEXT_NOT_PERMITTED。
+     只对本机和局域网放开，其余照旧按系统默认。 -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

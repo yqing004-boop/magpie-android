@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 关于：外壳版本 / 内核版本 / 官方仓库 / 移植作者 / 许可证。
+     链接行在 Java 里挂点击，点了直接开浏览器。 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="20dp"
+    android:paddingTop="18dp"
+    android:paddingEnd="20dp"
+    android:paddingBottom="6dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/about_app"
+        android:textColor="#2A2320"
+        android:textSize="19sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/about_version"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:fontFamily="monospace"
+        android:textColor="#8B847F"
+        android:textSize="12sp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="18dp"
+        android:text="@string/about_upstream"
+        android:textColor="#6B625D"
+        android:textSize="13sp" />
+
+    <!-- 官方仓库：点一下打开 -->
+    <TextView
+        android:id="@+id/about_repo"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:background="?android:attr/selectableItemBackground"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"
+        android:text="@string/about_repo_url"
+        android:textColor="#8A4B32"
+        android:textSize="14sp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:text="@string/about_author"
+        android:textColor="#6B625D"
+        android:textSize="13sp" />
+
+    <!-- 移植作者：酷安主页 -->
+    <TextView
+        android:id="@+id/about_author_name"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:background="?android:attr/selectableItemBackground"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"
+        android:text="@string/about_author_name_text"
+        android:textColor="#8A4B32"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/about_author_url"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?android:attr/selectableItemBackground"
+        android:paddingTop="2dp"
+        android:paddingBottom="6dp"
+        android:text="@string/about_author_url_text"
+        android:textColor="#9A9299"
+        android:textSize="12.5sp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:text="@string/about_license_text"
+        android:textColor="#8B847F"
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/about_notice"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:background="?android:attr/selectableItemBackground"
+        android:paddingTop="3dp"
+        android:paddingBottom="3dp"
+        android:text="@string/about_notice"
+        android:textColor="#8A4B32"
+        android:textSize="12sp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:text="@string/about_ai"
+        android:textColor="#8B847F"
+        android:textSize="12sp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:text="@string/about_unofficial"
+        android:textColor="#A39B96"
+        android:textSize="11.5sp" />
+</LinearLayout>
