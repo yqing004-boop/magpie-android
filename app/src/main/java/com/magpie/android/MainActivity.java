@@ -278,6 +278,12 @@ public class MainActivity extends Activity {
         gwPill.setBackground(chip);
         gwPill.setTextColor(onVariant);
 
+        // 「局域网」也是独立的 assist chip：有明确外框，不是裸文字。
+        GradientDrawable lanChip = rounded(s[M3.SECONDARY_CONTAINER], 16);
+        lanChip.setStroke(dp(1), s[M3.OUTLINE_VARIANT]);
+        lanPill.setBackground(lanChip);
+        lanPill.setTextColor(s[M3.ON_SECONDARY_CONTAINER]);
+
         GradientDrawable av = new GradientDrawable();
         av.setShape(GradientDrawable.OVAL);
         av.setColor(s[M3.PRIMARY_CONTAINER]);
