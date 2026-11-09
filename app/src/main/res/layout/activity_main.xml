@@ -89,6 +89,20 @@
                 android:text="@string/header_gateway_placeholder"
                 android:textSize="12sp" />
 
+            <!-- 局域网共享：开了显示 Wi-Fi 地址，点开看局域网 URL 和密钥 -->
+            <TextView
+                android:id="@+id/lan_pill"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
+                android:text="@string/lan_pill_off"
+                android:textSize="12sp"
+                android:visibility="gone" />
+
             <TextView
                 android:id="@+id/menu"
                 android:layout_width="48dp"

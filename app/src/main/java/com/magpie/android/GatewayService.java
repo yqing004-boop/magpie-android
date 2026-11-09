@@ -107,6 +107,10 @@ public class GatewayService extends Service {
         return new File(logDir(ctx), "magpie.log");
     }
 
+    static File callerKeysFile(Context ctx) {
+        return new File(dataDir(ctx), "caller-keys.json");
+    }
+
     // ------------------------------------------------------------------
     // ports
     // ------------------------------------------------------------------

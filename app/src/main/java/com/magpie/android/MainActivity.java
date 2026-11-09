@@ -84,6 +84,7 @@ public class MainActivity extends Activity {
     private View stateDot;
     private TextView stateText;
     private TextView gwPill;
+    private TextView lanPill;
     private View webCard;
 
     private final Handler ui = new Handler(Looper.getMainLooper());
@@ -116,6 +117,7 @@ public class MainActivity extends Activity {
         stateDot = findViewById(R.id.state_dot);
         stateText = findViewById(R.id.state_text);
         gwPill = findViewById(R.id.gw_pill);
+        lanPill = findViewById(R.id.lan_pill);
         webCard = findViewById(R.id.web_card);
 
         statusBody.setMovementMethod(new ScrollingMovementMethod());
@@ -139,6 +141,7 @@ public class MainActivity extends Activity {
             openInBrowser();
             return true;
         });
+        lanPill.setOnClickListener(v -> showLanDialog());
 
         startGatewayAndWait();
         autoCheckUpdates();
@@ -159,6 +162,14 @@ public class MainActivity extends Activity {
         }
         String host = Prefs.browserHost(this);
         gwPill.setText(host + ":" + GatewayService.gatewayPort(this));
+        if (lanPill != null) {
+            // 按钮常显：开了共享显示 Wi-Fi 地址；没开显示"局域网"，点开给开启入口
+            lanPill.setVisibility(View.VISIBLE);
+            String ip = Prefs.lan(this) ? LanInfo.localIp() : "";
+            lanPill.setText(ip.isEmpty()
+                    ? getString(R.string.lan_pill_off)
+                    : getString(R.string.lan_pill_on, ip + ":" + GatewayService.gatewayPort(this)));
+        }
         boolean alive = GatewayService.isAlive();
         if (alive && loaded) {
             stateDot.setBackgroundResource(R.drawable.dot_ok);
@@ -1061,6 +1072,109 @@ public class MainActivity extends Activity {
                 Toast.makeText(this, R.string.marvis_paste_failed, Toast.LENGTH_LONG).show();
             }
         });
+    }
+
+    /**
+     * 局域网共享信息：开着 → 局域网 URL + 掩码密钥（按钮复制对应的明文）；
+     * 没开 → 说明 + 「开启局域网共享」按钮（开壳的绑定开关并重启网关）。
+     * 密钥明文不显示在界面上，只有"复制"动作把它放进剪贴板。
+     */
+    private void showLanDialog() {
+        int[] c = M3.current(this);
+        boolean shellLan = Prefs.lan(this);
+        String ip = LanInfo.localIp();
+        String secret = LanInfo.lanSecret(this);
+        boolean shared = shellLan && !secret.isEmpty() && !ip.isEmpty();
+
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        int pad = dp(20);
+        box.setPadding(pad, dp(4), pad, 0);
+
+        TextView hint = new TextView(this);
+        hint.setTextSize(12.5f);
+        hint.setTextColor(c[M3.ON_SURFACE_VARIANT]);
+        hint.setText(shared ? R.string.lan_on_hint : R.string.lan_off_hint);
+        box.addView(hint);
+
+        TextView addrLabel = label(c, R.string.lan_addr_label, shared && !ip.isEmpty());
+        box.addView(addrLabel);
+        TextView addr = new TextView(this);
+        addr.setTextSize(13.5f);
+        addr.setTypeface(android.graphics.Typeface.MONOSPACE);
+        addr.setTextIsSelectable(true);
+        addr.setTextColor(shared ? c[M3.PRIMARY] : c[M3.ON_SURFACE_VARIANT]);
+        addr.setText(shared
+                ? "http://" + ip + ":" + GatewayService.gatewayPort(this) + "/v1"
+                : getString(R.string.lan_addr_missing));
+        addr.setPadding(0, dp(3), 0, 0);
+        box.addView(addr);
+
+        TextView keyLabel = label(c, R.string.lan_key_label, !secret.isEmpty());
+        keyLabel.setPadding(0, dp(12), 0, 0);
+        box.addView(keyLabel);
+        TextView key = new TextView(this);
+        key.setTextSize(13.5f);
+        key.setTypeface(android.graphics.Typeface.MONOSPACE);
+        key.setTextIsSelectable(true);
+        key.setTextColor(secret.isEmpty() ? c[M3.ON_SURFACE_VARIANT] : c[M3.PRIMARY]);
+        key.setText(secret.isEmpty() ? getString(R.string.lan_key_missing) : LanInfo.mask(secret));
+        key.setPadding(0, dp(3), 0, 0);
+        box.addView(key);
+
+        TextView sec = new TextView(this);
+        sec.setTextSize(11f);
+        sec.setTextColor(c[M3.OUTLINE]);
+        sec.setText(R.string.lan_security);
+        sec.setPadding(0, dp(12), 0, 0);
+        box.addView(sec);
+
+        AlertDialog dlg = new AlertDialog.Builder(this)
+                .setTitle(R.string.lan_title)
+                .setView(box)
+                .setPositiveButton(shared ? R.string.lan_copy_addr : R.string.lan_turn_on, null)
+                .setNeutralButton(secret.isEmpty() ? android.R.string.cancel : R.string.lan_copy_key, null)
+                .setNegativeButton(android.R.string.cancel, null)
+                .create();
+        styleDialog(dlg);
+        dlg.show();
+
+        dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            if (shared) {
+                copyText(addr.getText().toString());
+                Toast.makeText(this, R.string.lan_copied, Toast.LENGTH_SHORT).show();
+                return;
+            }
+            // 没开共享：开壳的绑定开关，重启网关让 0.0.0.0 生效
+            Prefs.setLan(this, true);
+            dlg.dismiss();
+            Toast.makeText(this, R.string.lan_opening, Toast.LENGTH_LONG).show();
+            GatewayService.restart(this);
+            loaded = false;
+            startGatewayAndWait();
+        });
+        if (!secret.isEmpty()) {
+            dlg.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
+                copyText(secret);
+                Toast.makeText(this, R.string.lan_copied, Toast.LENGTH_SHORT).show();
+            });
+        }
+    }
+
+    private TextView label(int[] c, int text, boolean bright) {
+        TextView t = new TextView(this);
+        t.setTextSize(12f);
+        t.setText(text);
+        t.setTextColor(c[bright ? M3.ON_SURFACE : M3.ON_SURFACE_VARIANT]);
+        t.setPadding(0, dp(12), 0, 0);
+        return t;
+    }
+
+    private void copyText(String text) {
+        ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        if (cm != null) {
+            cm.setPrimaryClip(ClipData.newPlainText("magpie", text));
+        }
     }
 
     /** 把回调地址交给插件：写到 magpie 子进程的 HOME 下，插件读完即删。 */
