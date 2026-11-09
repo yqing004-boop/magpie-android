@@ -55,6 +55,8 @@ public class GatewayService extends Service {
 
     private static final String TAG = "MagpieGateway";
     private static final int NOTIF_ID = 9101;
+    /** 前台通知最后一次展示的网关状态（null=未知），避免每次刷新都重发通知。 */
+    private static volatile Boolean lastNotifAlive;
     private static final String CHANNEL_ID = "magpie_gateway";
     public static final String ACTION_RESTART = "com.magpie.android.action.RESTART";
     public static final String EXTRA_FORCE = "force";
@@ -76,6 +78,13 @@ public class GatewayService extends Service {
     private static volatile PowerManager.WakeLock wakeLock;
 
     private final AtomicBoolean stopping = new AtomicBoolean(false);
+    /** 重启一次只跑一条线：以前两次 restart 挨着来，两个进程会抢同一个端口。 */
+    private static final Object RESTART_LOCK = new Object();
+    private static volatile boolean restarting;
+    /** 网关意外退出后的自动重试次数（成功就绪后清零）。 */
+    private final java.util.concurrent.atomic.AtomicInteger retries =
+            new java.util.concurrent.atomic.AtomicInteger(0);
+    private static final int MAX_RETRIES = 3;
 
     // ------------------------------------------------------------------
     // paths
@@ -386,6 +395,7 @@ public class GatewayService extends Service {
                 synchronized (LOCK) {
                     ready = true;
                 }
+                retries.set(0);
                 notifyReady(ctx);
                 break;
             }
@@ -406,13 +416,59 @@ public class GatewayService extends Service {
         }
         appendLog("magpie 退出，退出码 " + code);
         notifyDown(ctx, code);
+
+        // 主动停止/重启时 stopping 为 true，不走自动恢复。
+        if (!stopping.get() && code != 0 && retries.incrementAndGet() <= MAX_RETRIES) {
+            long delay = 2000L * retries.get();
+            appendLog("网关异常退出，将在 " + delay + "ms 后自动重启（第 "
+                    + retries.get() + "/" + MAX_RETRIES + " 次）");
+            sleep(delay);
+            if (!stopping.get()) {
+                synchronized (LOCK) {
+                    starting = false;
+                }
+                boot();
+                return;
+            }
+        }
         stopSelf();
     }
 
+    /**
+     * 重启网关：串行执行，并等旧进程真的退出、端口释放后再启动。
+     *
+     * <p>以前这里是「destroy → sleep 1.2s → boot」，而且可以被连着调用两次
+     * （设置页保存一次、主界面 onActivityResult 又一次）：第二个 boot 会和
+     * 第一个抢 3425，日志里就是连着两条「exec 启动」。重启期间正在跑的请求
+     * 会被 SIGTERM 打断（退出码 143）。
+     */
     private void restart() {
-        synchronized (LOCK) {
-            stopping.set(true);
+        synchronized (RESTART_LOCK) {
+            if (restarting) {
+                appendLog("已有一次重启在进行，忽略这次重复的重启请求");
+                return;
+            }
+            restarting = true;
         }
+        new Thread(() -> {
+            try {
+                stopping.set(true);
+                killProcess();
+                waitPortsFree();
+                retries.set(0);
+                synchronized (LOCK) {
+                    starting = false;
+                }
+                stopping.set(false);
+                boot();
+            } finally {
+                restarting = false;
+            }
+        }, "magpie-restart").start();
+    }
+
+    /** 结束当前 magpie 进程，等它真的退出（最多 5s），不行就强行结束。 */
+    private void killProcess() {
         Process p;
         synchronized (LOCK) {
             p = process;
@@ -420,21 +476,33 @@ public class GatewayService extends Service {
         if (p != null && p.isAlive()) {
             p.destroy();
             try {
-                Thread.sleep(1200);
-            } catch (InterruptedException ignored) {
-            }
-            if (p.isAlive()) {
-                p.destroyForcibly();
+                if (!p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                    p.destroyForcibly();
+                    p.waitFor(2, java.util.concurrent.TimeUnit.SECONDS);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             }
         }
         synchronized (LOCK) {
             process = null;
             ready = false;
-            starting = false;
         }
         LocalProxy.stop();
-        stopping.set(false);
-        boot();
+    }
+
+    /** 等旧进程把 3425/3430 放开，别让新进程 bind 失败。 */
+    private void waitPortsFree() {
+        String host = Prefs.browserHost(this);
+        int gw = gatewayPort(this);
+        int web = webPort(this);
+        for (int i = 0; i < 20; i++) {
+            if (!portOpen(host, gw) && !portOpen(host, web)) {
+                return;
+            }
+            sleep(150);
+        }
+        appendLog("旧进程的端口还没释放，仍然尝试启动");
     }
 
     @Override
@@ -456,12 +524,10 @@ public class GatewayService extends Service {
 
     @Override
     public void onTaskRemoved(Intent rootIntent) {
-        // The Activity is the whole point of the app; keep serving.
-        Intent restart = new Intent(getApplicationContext(), GatewayService.class);
-        restart.setAction(ACTION_RESTART);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            getApplicationContext().startForegroundService(restart);
-        }
+        // 划掉最近任务时**不要**重启网关：以前这里发 ACTION_RESTART，
+        // 会把正在处理请求的 magpie 杀掉重起（日志里的退出码 143 就是这么来的），
+        // 后台的 AI 请求跟着断。任务被移除不影响前台服务，交给 START_STICKY 兜底。
+        appendLog("最近任务被移除，网关保持运行");
         super.onTaskRemoved(rootIntent);
     }
 
@@ -940,6 +1006,7 @@ public class GatewayService extends Service {
     }
 
     private void notifyReady(Context ctx) {
+        lastNotifAlive = true;
         NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null) {
             nm.notify(NOTIF_ID, notification(ctx, "Magpie 已就绪",
@@ -948,10 +1015,42 @@ public class GatewayService extends Service {
     }
 
     private void notifyDown(Context ctx, int code) {
+        lastNotifAlive = false;
         NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null) {
             nm.notify(NOTIF_ID, notification(ctx, "Magpie 已停止",
                     code < 0 ? "网关进程结束" : "退出码 " + code, 0));
+        }
+    }
+
+    /**
+     * 把前台通知与网关真实状态对齐。
+     *
+     * <p>startForeground 每次都会把文案重置成「正在启动网关…」，而
+     * notifyReady 只在启动后的 120 秒探测窗口里出现一次；之后每次打开 App、
+     * 每次系统重投递服务 Intent，通知都会退回启动文案，用户就会看到
+     * 「App 显示运行中、通知显示正在启动」的矛盾。这里在状态真的变化时
+     * 把通知刷回运行/停止。
+     */
+    static void syncNotification(Context ctx, boolean alive) {
+        Boolean last = lastNotifAlive;
+        if (last != null && last == alive) {
+            return;
+        }
+        lastNotifAlive = alive;
+        if (alive) {
+            NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) {
+                nm.notify(NOTIF_ID, notification(ctx, "Magpie 运行中",
+                        "网关 http://" + bindHost(ctx) + ":" + gatewayPort(ctx)
+                                + " · 局域网接口见顶栏", Notification.FLAG_ONGOING_EVENT));
+            }
+        } else {
+            lastNotifAlive = false;
+            NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) {
+                nm.notify(NOTIF_ID, notification(ctx, "Magpie 已停止", "网关进程结束", 0));
+            }
         }
     }
 

@@ -25,6 +25,7 @@ import android.util.Log;
 import android.util.TypedValue;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.webkit.CookieManager;
 import android.webkit.GeolocationPermissions;
 import android.webkit.JsPromptResult;
@@ -41,6 +42,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.PopupMenu;
+import android.widget.FrameLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -93,6 +95,8 @@ public class MainActivity extends Activity {
     private volatile boolean loaded;
     private volatile boolean polling;
     private volatile ValueCallback<Uri[]> fileCallback;
+    /** 重建 WebView 期间挡住重复回调，别一次死两个进程建出三个页面。 */
+    private volatile boolean webRebuilding;
 
     // ------------------------------------------------------------------
 
@@ -145,6 +149,8 @@ public class MainActivity extends Activity {
 
         startGatewayAndWait();
         autoCheckUpdates();
+        // 首次启动的后台保活引导：通知权限、电池优化、厂商自启动步骤
+        ui.postDelayed(() -> BackgroundGuide.maybeShowOnLaunch(this), 2500);
     }
 
     /** 卡片上的状态点：运行中 / 启动中 / 已停止，两秒刷一次。 */
@@ -168,6 +174,8 @@ public class MainActivity extends Activity {
             lanPill.setText(Prefs.lan(this) ? R.string.lan_pill_on : R.string.lan_pill_off);
         }
         boolean alive = GatewayService.isAlive();
+        // 让前台通知跟上真实状态：别再出现「App 显示运行中、通知显示正在启动」
+        GatewayService.syncNotification(this, alive);
         if (alive && loaded) {
             stateDot.setBackgroundResource(R.drawable.dot_ok);
             stateText.setText(R.string.header_running);
@@ -202,16 +210,8 @@ public class MainActivity extends Activity {
         // 内容区四角圆弧：容器与 WebView 各自带一个圆角 outline 再裁剪。
         // WebView 自己也会画到边界外（滚动条、浮动按钮），所以两边都裁。
         if (webCard != null) {
-            android.view.ViewOutlineProvider round = new android.view.ViewOutlineProvider() {
-                @Override
-                public void getOutline(View v, android.graphics.Outline o) {
-                    o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), dp(20));
-                }
-            };
-            webCard.setOutlineProvider(round);
             webCard.setClipToOutline(true);
-            web.setOutlineProvider(round);
-            web.setClipToOutline(true);
+            applyWebOutline();
             webCard.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> v.invalidateOutline());
         }
     }
@@ -526,12 +526,11 @@ public class MainActivity extends Activity {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQ_SETTINGS) {
             if (resultCode == RESULT_OK) {
-                // a port or a host changed: the running gateway is on the
-                // old one, so it goes down and a new one comes up
-                GatewayService.resetState();
+                // 设置页自己会在端口/局域网/更新源变化时重启网关；这里**不再**
+                // 重启第二遍 —— 以前两边各重启一次，日志里就是连着两条 exec 启动，
+                // 两个进程抢同一个端口，正在跑的请求也被打断。
                 loaded = false;
-                GatewayService.restart(this);
-                startGatewayAndWait();
+                poll();
             }
         } else if (requestCode == REQ_UPDATE) {
             if (resultCode == RESULT_OK) {
@@ -585,6 +584,22 @@ public class MainActivity extends Activity {
                 if (isInternal(url)) {
                     hideOverlay();
                 }
+            }
+
+            /**
+             * 页面渲染进程被系统回收（内存压力、长时间后台、渲染崩溃）时，
+             * 不接管的话 Android 会把整个 App 一起杀掉 —— 表现为闪退。
+             * 返回 true 表示自己处理：丢掉这个 WebView，重建一个再加载。
+             */
+            @Override
+            public boolean onRenderProcessGone(WebView view, android.webkit.RenderProcessGoneDetail detail) {
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+                    return false;
+                }
+                boolean crashed = detail != null && detail.didCrash();
+                Log.w(TAG, "WebView 渲染进程结束（didCrash=" + crashed + "），准备重建");
+                ui.post(() -> rebuildWeb(crashed));
+                return true;
             }
 
             @Override
@@ -754,6 +769,75 @@ public class MainActivity extends Activity {
 
         if (saved != null && saved.containsKey("magpie_web_state")) {
             web.restoreState(saved);
+        }
+    }
+
+    /** 内容区四角圆弧：容器与 WebView 各自带一个圆角 outline 再裁剪。 */
+    private void applyWebOutline() {
+        android.view.ViewOutlineProvider round = new android.view.ViewOutlineProvider() {
+            @Override
+            public void getOutline(View v, android.graphics.Outline o) {
+                o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), dp(20));
+            }
+        };
+        if (webCard != null) {
+            webCard.setOutlineProvider(round);
+            webCard.setClipToOutline(true);
+        }
+        if (web != null) {
+            web.setOutlineProvider(round);
+            web.setClipToOutline(true);
+        }
+    }
+
+    /**
+     * 渲染进程没了：旧 WebView 实例已经作废（不能复用），销毁后在同一个
+     * FrameLayout 里新建一个，重新绑定客户端再加载页面。
+     *
+     * <p>不 restoreState —— 页面状态本来就存在那个死掉的渲染进程里，
+     * 直接重新加载首页最可靠。网关的数据不受影响。
+     */
+    private void rebuildWeb(final boolean crashed) {
+        if (webRebuilding) {
+            return;
+        }
+        webRebuilding = true;
+        try {
+            ViewGroup parent = (ViewGroup) webCard;
+            try {
+                web.setWebViewClient(null);
+            } catch (Exception ignored) {
+            }
+            parent.removeView(web);
+            try {
+                web.destroy();
+            } catch (Exception ignored) {
+            }
+
+            web = new WebView(this);
+            web.setLayoutParams(new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT));
+            parent.addView(web);
+
+            setupWebView(null);
+            applyWebOutline();
+            web.setBackgroundColor(M3.current(this)[M3.SURFACE]);
+
+            loaded = false;
+            Toast.makeText(this, crashed ? R.string.web_render_crashed : R.string.web_restarted,
+                    Toast.LENGTH_LONG).show();
+            if (GatewayService.isAlive()) {
+                loadPage();
+            } else {
+                showStatus();
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "重建 WebView 失败", e);
+            loaded = false;
+            showStatus();
+        } finally {
+            webRebuilding = false;
         }
     }
 

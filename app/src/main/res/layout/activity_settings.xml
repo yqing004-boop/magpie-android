@@ -90,6 +90,122 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/card_background"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:id="@+id/label_web_memory"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_web_memory"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/hint_web_memory"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/settings_web_memory_hint"
+                android:textSize="12sp" />
+
+            <RadioGroup
+                android:id="@+id/web_release_group"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="vertical">
+
+                <RadioButton
+                    android:id="@+id/web_release_never"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:text="@string/settings_web_never" />
+
+                <RadioButton
+                    android:id="@+id/web_release_15"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:text="@string/settings_web_15" />
+
+                <RadioButton
+                    android:id="@+id/web_release_30"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:text="@string/settings_web_30" />
+
+                <RadioButton
+                    android:id="@+id/web_release_custom"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:text="@string/settings_web_custom" />
+            </RadioGroup>
+
+            <EditText
+                android:id="@+id/web_release_custom_minutes"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="4dp"
+                android:gravity="center_vertical"
+                android:hint="@string/settings_web_custom_hint"
+                android:inputType="number"
+                android:maxLength="4"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/card_background_guide"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:id="@+id/label_background_guide"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_background_guide"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/hint_background_guide"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/settings_background_guide_hint"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/open_notification_settings"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="12dp"
+                android:text="@string/settings_open_notifications" />
+
+            <Button
+                android:id="@+id/open_battery_settings"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="8dp"
+                android:text="@string/settings_open_battery" />
+
+            <Button
+                android:id="@+id/open_background_guide"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="8dp"
+                android:text="@string/settings_open_background_guide" />
+        </LinearLayout>
+
+        <LinearLayout
             android:id="@+id/card_feed"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

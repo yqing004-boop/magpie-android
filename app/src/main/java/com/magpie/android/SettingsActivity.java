@@ -1,6 +1,7 @@
 package com.magpie.android;
 
 import android.app.Activity;
+import android.app.NotificationManager;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.net.Uri;
@@ -8,6 +9,7 @@ import android.content.res.ColorStateList;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -16,6 +18,8 @@ import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.Switch;
+import android.widget.RadioGroup;
+import android.widget.RadioButton;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -38,6 +42,12 @@ public class SettingsActivity extends Activity {
     private EditText feed;
     private Switch monet;
     private LinearLayout seedBar;
+    private RadioGroup webReleaseGroup;
+    private RadioButton webReleaseNever;
+    private RadioButton webRelease15;
+    private RadioButton webRelease30;
+    private RadioButton webReleaseCustom;
+    private EditText webReleaseCustomMinutes;
 
     private int[] c;
 
@@ -59,6 +69,17 @@ public class SettingsActivity extends Activity {
         port = findViewById(R.id.port);
         lan = findViewById(R.id.lan);
         feed = findViewById(R.id.feed);
+        webReleaseGroup = findViewById(R.id.web_release_group);
+        webReleaseNever = findViewById(R.id.web_release_never);
+        webRelease15 = findViewById(R.id.web_release_15);
+        webRelease30 = findViewById(R.id.web_release_30);
+        webReleaseCustom = findViewById(R.id.web_release_custom);
+        webReleaseCustomMinutes = findViewById(R.id.web_release_custom_minutes);
+        setupWebReleasePicker();
+        findViewById(R.id.open_notification_settings).setOnClickListener(v -> openNotificationSettings());
+        findViewById(R.id.open_battery_settings).setOnClickListener(v -> openBatterySettings());
+        findViewById(R.id.open_background_guide).setOnClickListener(v ->
+                BackgroundGuide.show(SettingsActivity.this, false));
 
         port.setText(String.valueOf(Prefs.port(this)));
         port.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
@@ -88,6 +109,9 @@ public class SettingsActivity extends Activity {
 
         Button save = findViewById(R.id.save);
         save.setOnClickListener(v -> {
+            if (!saveWebReleasePicker()) {
+                return;
+            }
             Prefs.setPort(SettingsActivity.this, port.getText().toString());
             Prefs.setUpdateFeed(SettingsActivity.this, feed.getText().toString());
             // 只有端口 / 局域网 / 更新源变了才需要重启网关；换个主题色不该
@@ -120,6 +144,66 @@ public class SettingsActivity extends Activity {
         checkShell.setOnClickListener(v -> checkShellUpdate());
 
         paint();
+    }
+
+    /** 后台 WebView 释放时间：0/15/30/用户自定义分钟。 */
+    private void setupWebReleasePicker() {
+        int minutes = Prefs.webReleaseMinutes(this);
+        if (minutes == 15) {
+            webRelease15.setChecked(true);
+        } else if (minutes == 30) {
+            webRelease30.setChecked(true);
+        } else if (minutes > 0) {
+            webReleaseCustom.setChecked(true);
+            webReleaseCustomMinutes.setText(String.valueOf(minutes));
+            webReleaseCustomMinutes.setVisibility(View.VISIBLE);
+        } else {
+            webReleaseNever.setChecked(true);
+        }
+        webReleaseGroup.setOnCheckedChangeListener((group, id) -> {
+            webReleaseCustomMinutes.setVisibility(id == R.id.web_release_custom
+                    ? View.VISIBLE : View.GONE);
+        });
+    }
+
+    private boolean saveWebReleasePicker() {
+        int minutes = 0;
+        if (webRelease15.isChecked()) {
+            minutes = 15;
+        } else if (webRelease30.isChecked()) {
+            minutes = 30;
+        } else if (webReleaseCustom.isChecked()) {
+            try {
+                minutes = Integer.parseInt(webReleaseCustomMinutes.getText().toString().trim());
+            } catch (Exception ignored) {
+                minutes = 0;
+            }
+            if (minutes < 1 || minutes > 1440) {
+                Toast.makeText(this, R.string.settings_web_custom_invalid, Toast.LENGTH_LONG).show();
+                return false;
+            }
+        }
+        Prefs.setWebReleaseMinutes(this, minutes);
+        return true;
+    }
+
+    private void openNotificationSettings() {
+        try {
+            Intent i = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+            i.putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
+            startActivity(i);
+        } catch (Exception e) {
+            startActivity(new Intent(Settings.ACTION_SETTINGS));
+        }
+    }
+
+    private void openBatterySettings() {
+        try {
+            startActivity(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    Uri.parse("package:" + getPackageName())));
+        } catch (Exception e) {
+            startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+        }
     }
 
     /** 查这个 App 在 GitHub 开源仓库里的新版本，只提示、跳到 Release 页。 */
@@ -197,8 +281,8 @@ public class SettingsActivity extends Activity {
         findViewById(R.id.settings_root).setBackgroundColor(surface);
         ((TextView) findViewById(R.id.settings_title)).setTextColor(c[M3.ON_SURFACE]);
 
-        int[] cards = {R.id.card_port, R.id.card_lan, R.id.card_feed,
-                R.id.card_appearance, R.id.card_seed};
+        int[] cards = {R.id.card_port, R.id.card_lan, R.id.card_background,
+                R.id.card_background_guide, R.id.card_feed, R.id.card_appearance, R.id.card_seed};
         for (int id : cards) {
             View card = findViewById(id);
             GradientDrawable bg = new GradientDrawable();
@@ -207,19 +291,26 @@ public class SettingsActivity extends Activity {
             card.setBackground(bg);
         }
 
-        int[] labels = {R.id.label_port, R.id.label_feed, R.id.label_seed};
+        int[] labels = {R.id.label_port, R.id.label_web_memory, R.id.label_background_guide,
+                R.id.label_feed, R.id.label_seed};
         for (int id : labels) {
             ((TextView) findViewById(id)).setTextColor(c[M3.ON_SURFACE]);
         }
-        int[] hints = {R.id.hint_port, R.id.hint_lan, R.id.monet_hint, R.id.hint_seed};
+        int[] hints = {R.id.hint_port, R.id.hint_lan, R.id.hint_web_memory,
+                R.id.hint_background_guide, R.id.monet_hint, R.id.hint_seed};
         for (int id : hints) {
             ((TextView) findViewById(id)).setTextColor(c[M3.ON_SURFACE_VARIANT]);
         }
 
         field(port);
         field(feed);
+        field(webReleaseCustomMinutes);
         tintSwitch(lan);
         tintSwitch(monet);
+        tintRadio(webReleaseNever);
+        tintRadio(webRelease15);
+        tintRadio(webRelease30);
+        tintRadio(webReleaseCustom);
         ((Switch) lan).setTextColor(c[M3.ON_SURFACE]);
         ((Switch) monet).setTextColor(c[M3.ON_SURFACE]);
 
@@ -232,6 +323,10 @@ public class SettingsActivity extends Activity {
         check.setBackground(outlined);
         check.setTextColor(c[M3.PRIMARY]);
         check.setAllCaps(false);
+        outlined(findViewById(R.id.check_shell));
+        outlined(findViewById(R.id.open_notification_settings));
+        outlined(findViewById(R.id.open_battery_settings));
+        outlined(findViewById(R.id.open_background_guide));
 
         filled(findViewById(R.id.save));
         tonal(findViewById(R.id.restart));
@@ -259,6 +354,25 @@ public class SettingsActivity extends Activity {
                 new int[]{c[M3.PRIMARY], c[M3.SURFACE_CONTAINER_HIGHEST]});
         sw.setThumbTintList(thumb);
         sw.setTrackTintList(track);
+    }
+
+    private void tintRadio(RadioButton rb) {
+        ColorStateList tint = new ColorStateList(
+                new int[][]{{android.R.attr.state_checked}, {-android.R.attr.state_checked}},
+                new int[]{c[M3.PRIMARY], c[M3.OUTLINE]});
+        rb.setButtonTintList(tint);
+        rb.setTextColor(c[M3.ON_SURFACE]);
+    }
+
+    private void outlined(Button b) {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(c[M3.SURFACE]);
+        bg.setCornerRadius(dp(20));
+        bg.setStroke(dp(1), c[M3.OUTLINE]);
+        b.setBackground(bg);
+        b.setTextColor(c[M3.PRIMARY]);
+        b.setAllCaps(false);
+        b.setStateListAnimator(null);
     }
 
     /** M3 filled：primary 底 + on-primary 字。 */

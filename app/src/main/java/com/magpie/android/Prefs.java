@@ -24,6 +24,12 @@ public final class Prefs {
     public static final String LAN = "lan";
     public static final String AUTOSTART = "autostart";
     public static final String UPDATE_FEED = "update_feed";
+    /** 后台多久后释放 WebView（分钟）；0 = 从不。 */
+    public static final String WEB_RELEASE_MINUTES = "web_release_minutes";
+    /** 后台运行检查卡被用户主动关闭过，别每次进设置都强提醒。 */
+    public static final String BACKGROUND_GUIDE_DISMISSED = "background_guide_dismissed";
+    /** 首次后台保活引导是否已经完成或被用户选择不再提示。 */
+    public static final String BACKGROUND_GUIDE_SEEN = "background_guide_seen";
     /** 壳自己装过的版本，用它判断“是不是比本机的更新”，不用每次都跑二进制。 */
     public static final String INSTALLED_VERSION = "installed_version";
     /** 上次静默检查更新是几点（毫秒），别每次开 App 都问一遍网络。 */
@@ -78,6 +84,33 @@ public final class Prefs {
 
     public static boolean lan(Context ctx) {
         return sp(ctx).getBoolean(LAN, false);
+    }
+
+    /** 0=从不；其余值为后台释放 WebView 的分钟数。 */
+    public static int webReleaseMinutes(Context ctx) {
+        int m = sp(ctx).getInt(WEB_RELEASE_MINUTES, 0);
+        return m >= 1 && m <= 1440 ? m : 0;
+    }
+
+    public static void setWebReleaseMinutes(Context ctx, int minutes) {
+        int m = minutes >= 1 && minutes <= 1440 ? minutes : 0;
+        sp(ctx).edit().putInt(WEB_RELEASE_MINUTES, m).apply();
+    }
+
+    public static boolean backgroundGuideDismissed(Context ctx) {
+        return sp(ctx).getBoolean(BACKGROUND_GUIDE_DISMISSED, false);
+    }
+
+    public static void setBackgroundGuideDismissed(Context ctx, boolean dismissed) {
+        sp(ctx).edit().putBoolean(BACKGROUND_GUIDE_DISMISSED, dismissed).apply();
+    }
+
+    public static boolean backgroundGuideSeen(Context ctx) {
+        return sp(ctx).getBoolean(BACKGROUND_GUIDE_SEEN, false);
+    }
+
+    public static void setBackgroundGuideSeen(Context ctx, boolean seen) {
+        sp(ctx).edit().putBoolean(BACKGROUND_GUIDE_SEEN, seen).apply();
     }
 
     public static boolean autostart(Context ctx) {
