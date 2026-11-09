@@ -27,7 +27,7 @@ fi
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-export ANDROID_JAR="${ANDROID_JAR:-/tmp/plat30/android-11/android.jar}"
+export ANDROID_JAR="${ANDROID_JAR:-$HOME/.aimini/android-sdk/android-11/android.jar}"
 export ANDROID_SDK="${ANDROID_SDK:-/opt/android-sdk}"
 
 REPO_DIR="${REPO_DIR:-$ROOT/../magpie-android-repo}"
