@@ -70,6 +70,8 @@
     <string name="settings_monet">莫奈取色</string>
     <string name="settings_monet_hint">从系统壁纸里取一种强调色（需要 Android 12 及以上）</string>
     <string name="settings_monet_unavailable">这个系统版本不支持动态取色</string>
+    <string name="settings_seed">主题色</string>
+    <string name="settings_seed_hint">Material 3 · TonalSpot · SPEC 2025：从八种种子色生成整套配色</string>
     <string name="settings_bg">自定义背景颜色</string>
     <string name="settings_header_bg">顶栏卡片颜色</string>
     <string name="settings_page_bg">内容区背景颜色</string>
@@ -98,4 +100,19 @@
     <string name="update_rollback_done">已回滚，正在重启网关…</string>
     <string name="update_confirm_rollback">把 magpie 换回上一个版本？</string>
     <string name="update_working">正在更新，别切走太久…</string>
+    <string name="act_marvis_paste">粘贴 Marvis 授权回调</string>
+    <string name="act_marvis_paste_sub">浏览器里登录完，把地址栏整条 URL 贴进来</string>
+    <string name="marvis_paste_title">粘贴 Marvis 授权回调</string>
+    <string name="marvis_paste_help">先在浏览器里完成 QQ 授权，页面跳转后复制地址栏里整条以 https://yybadaccess.3g.qq.com/marvis_client_login/marvis_oauth 开头的 URL（必须带 code=）</string>
+    <string name="marvis_paste_hint">https://yybadaccess.3g.qq.com/marvis_client_login/marvis_oauth?login_type=QC&amp;code=…</string>
+    <string name="marvis_paste_ok">提交</string>
+    <string name="marvis_paste_bad">这不像回调地址：要以 http 开头、并且含 code=</string>
+    <string name="marvis_paste_done">已交给 magpie，正在换登录态（最多等 10 分钟）</string>
+    <string name="marvis_paste_failed">写不进去：magpie 的 HOME 目录不可用</string>
+    <string name="settings_check_shell">检查 App 更新（GitHub）</string>
+    <string name="shell_update_title">App 更新</string>
+    <string name="shell_update_available">发现新版本 %1$s，点「去下载」打开 GitHub Release 页手动下载安装。</string>
+    <string name="shell_update_latest">已是最新版（%1$s）</string>
+    <string name="shell_update_failed">检查失败：%1$s</string>
+    <string name="shell_update_go">去下载</string>
 </resources>

@@ -149,22 +149,14 @@ public final class Prefs {
         sp(ctx).edit().putBoolean("monet", on).apply();
     }
 
-    /** 顶栏那张卡片的底色；0 = 跟随莫奈/默认米色。 */
-    public static int headerColor(Context ctx) {
-        return sp(ctx).getInt("header_color", 0);
+    /** 主题种子色索引（0..7，对应 M3.SEEDS）。 */
+    public static int seed(Context ctx) {
+        int i = sp(ctx).getInt("seed", 0);
+        return Math.max(0, Math.min(M3.SEEDS.length - 1, i));
     }
 
-    public static void setHeaderColor(Context ctx, int color) {
-        sp(ctx).edit().putInt("header_color", color).apply();
-    }
-
-    /** 下面内容区（含四周与状态栏那一条）的底色；0 = 跟随莫奈/默认。 */
-    public static int pageColor(Context ctx) {
-        return sp(ctx).getInt("page_color", sp(ctx).getInt("bg_color", 0));
-    }
-
-    public static void setPageColor(Context ctx, int color) {
-        sp(ctx).edit().putInt("page_color", color).apply();
+    public static void setSeed(Context ctx, int i) {
+        sp(ctx).edit().putInt("seed", Math.max(0, Math.min(M3.SEEDS.length - 1, i))).apply();
     }
 
     /** The key the Web UI asks for. Generated once and kept, so the WebView

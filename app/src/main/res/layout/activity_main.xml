@@ -1,12 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 顶栏卡片 + 圆角内容区 + 启动/失败遮罩。
-     沉浸：根布局不设 fitsSystemWindows，状态栏那一条由 shell 的 paddingTop
-     自己让出来（代码里算的 status_bar_height），卡片就不会钻进状态栏。 -->
+<!-- Material 3 骨架：顶栏（surface container）、圆角内容区（surface container lowest）、
+     网关未就绪时的整页状态。颜色全部在 MainActivity.applyTheme() 里按 M3 令牌刷，
+     XML 只定结构和尺寸。 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/root"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="#F4F4F8">
+    android:layout_height="match_parent">
 
     <LinearLayout
         android:id="@+id/shell"
@@ -14,26 +13,26 @@
         android:layout_height="match_parent"
         android:orientation="vertical">
 
-        <!-- 顶栏：一只鸟 + 名字 + 状态点 + 网关胶囊 + 三个点。 -->
+        <!-- M3 top app bar：56dp 高，圆角大卡片，图标按钮 48dp -->
         <LinearLayout
             android:id="@+id/header"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
-            android:layout_marginTop="2dp"
-            android:layout_marginEnd="10dp"
-            android:background="@drawable/bg_header"
+            android:layout_marginStart="12dp"
+            android:layout_marginTop="4dp"
+            android:layout_marginEnd="12dp"
             android:gravity="center_vertical"
+            android:minHeight="60dp"
             android:orientation="horizontal"
-            android:paddingStart="10dp"
-            android:paddingTop="8dp"
-            android:paddingEnd="4dp"
-            android:paddingBottom="8dp">
+            android:paddingStart="8dp"
+            android:paddingTop="6dp"
+            android:paddingEnd="6dp"
+            android:paddingBottom="6dp">
 
             <ImageView
                 android:id="@+id/avatar"
-                android:layout_width="34dp"
-                android:layout_height="34dp"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
                 android:contentDescription="@string/app_name"
                 android:scaleType="fitCenter"
                 android:src="@drawable/ic_magpie_bird" />
@@ -41,7 +40,7 @@
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
+                android:layout_marginStart="10dp"
                 android:layout_weight="1"
                 android:orientation="vertical">
 
@@ -49,73 +48,68 @@
                     android:id="@+id/header_title"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:letterSpacing="0"
                     android:text="@string/app_name"
-                    android:textColor="#2A2320"
-                    android:textSize="16sp"
+                    android:textSize="18sp"
                     android:textStyle="bold" />
 
                 <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
                     android:gravity="center_vertical"
                     android:orientation="horizontal">
 
                     <View
                         android:id="@+id/state_dot"
-                        android:layout_width="7dp"
-                        android:layout_height="7dp"
+                        android:layout_width="8dp"
+                        android:layout_height="8dp"
                         android:background="@drawable/dot_off" />
 
                     <TextView
                         android:id="@+id/state_text"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="5dp"
+                        android:layout_marginStart="6dp"
                         android:text="@string/header_starting"
-                        android:textColor="#6B625D"
-                        android:textSize="11sp" />
+                        android:textSize="12sp" />
                 </LinearLayout>
             </LinearLayout>
 
-            <!-- 点一下就复制 http://127.0.0.1:3425/v1 -->
+            <!-- 点一下复制 http://127.0.0.1:3425/v1（M3 assist chip） -->
             <TextView
                 android:id="@+id/gw_pill"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="@drawable/bg_pill"
+                android:layout_height="32dp"
                 android:clickable="true"
                 android:focusable="true"
-                android:paddingStart="10dp"
-                android:paddingTop="5dp"
-                android:paddingEnd="10dp"
-                android:paddingBottom="5dp"
+                android:gravity="center"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
                 android:text="@string/header_gateway_placeholder"
-                android:textColor="#8A4B32"
-                android:textSize="12.5sp" />
+                android:textSize="12sp" />
 
             <TextView
                 android:id="@+id/menu"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/sheet_title"
                 android:gravity="center"
                 android:text="&#8942;"
-                android:textColor="#5A514C"
-                android:textSize="18sp" />
+                android:textSize="20sp" />
         </LinearLayout>
 
-        <!-- 内容区：四角圆弧，里面是 magpie 的 Web UI（圆角由代码 clipToOutline 裁）。 -->
+        <!-- 内容区：24dp 圆弧，里面是 magpie 的 Web UI（圆角由代码 clipToOutline 裁） -->
         <FrameLayout
             android:id="@+id/web_card"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_marginStart="10dp"
+            android:layout_marginStart="12dp"
             android:layout_marginTop="6dp"
-            android:layout_marginEnd="10dp"
-            android:layout_marginBottom="8dp"
-            android:layout_weight="1"
-            android:background="@drawable/bg_content">
+            android:layout_marginEnd="12dp"
+            android:layout_marginBottom="10dp"
+            android:layout_weight="1">
 
             <WebView
                 android:id="@+id/web"
@@ -129,7 +123,6 @@
         android:id="@+id/overlay"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#F4F4F8"
         android:fillViewport="true"
         android:scrollbars="none"
         android:visibility="gone">
@@ -139,46 +132,50 @@
             android:layout_height="wrap_content"
             android:gravity="center_horizontal"
             android:orientation="vertical"
-            android:padding="28dp">
+            android:paddingStart="28dp"
+            android:paddingTop="36dp"
+            android:paddingEnd="28dp"
+            android:paddingBottom="28dp">
 
             <TextView
                 android:id="@+id/status_title"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="10dp"
+                android:layout_marginBottom="12dp"
                 android:text="@string/status_starting"
-                android:textColor="#1C1C1E"
-                android:textSize="22sp"
+                android:textSize="24sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/status_body"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="20dp"
+                android:layout_marginBottom="24dp"
                 android:fontFamily="monospace"
-                android:lineSpacingExtra="2dp"
-                android:textColor="#4A4A52"
+                android:lineSpacingExtra="3dp"
                 android:textSize="13sp" />
 
             <Button
                 android:id="@+id/status_retry"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_height="48dp"
                 android:layout_marginBottom="10dp"
+                android:minWidth="160dp"
                 android:text="@string/status_retry" />
 
             <Button
                 android:id="@+id/status_show_log"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_height="48dp"
                 android:layout_marginBottom="10dp"
+                android:minWidth="160dp"
                 android:text="@string/status_show_log" />
 
             <Button
                 android:id="@+id/status_settings"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_height="48dp"
+                android:minWidth="160dp"
                 android:text="@string/status_settings" />
         </LinearLayout>
     </ScrollView>

@@ -4,7 +4,6 @@
     android:id="@+id/update_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F4F4F8"
     android:fillViewport="true">
 
     <LinearLayout
@@ -25,10 +24,10 @@
                 android:orientation="vertical">
 
                 <TextView
+                    android:id="@+id/label_current"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/update_current"
-                    android:textColor="#666666"
                     android:textSize="12sp" />
 
                 <TextView
@@ -37,7 +36,6 @@
                     android:layout_height="wrap_content"
                     android:fontFamily="monospace"
                     android:text="@string/update_unknown"
-                    android:textColor="#1C1C1E"
                     android:textSize="20sp"
                     android:textStyle="bold" />
             </LinearLayout>
@@ -49,10 +47,10 @@
                 android:orientation="vertical">
 
                 <TextView
+                    android:id="@+id/label_latest"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/update_latest"
-                    android:textColor="#666666"
                     android:textSize="12sp" />
 
                 <TextView
@@ -61,7 +59,6 @@
                     android:layout_height="wrap_content"
                     android:fontFamily="monospace"
                     android:text="@string/update_unknown"
-                    android:textColor="#1C1C1E"
                     android:textSize="20sp"
                     android:textStyle="bold" />
             </LinearLayout>
@@ -73,7 +70,6 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
             android:text="@string/update_never"
-            android:textColor="#4A4A52"
             android:textSize="14sp" />
 
         <ProgressBar
@@ -116,11 +112,11 @@
             android:text="@string/update_rollback" />
 
         <TextView
+            android:id="@+id/label_notes"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
             android:text="@string/update_notes"
-            android:textColor="#666666"
             android:textSize="12sp" />
 
         <TextView
@@ -130,7 +126,6 @@
             android:layout_marginTop="6dp"
             android:fontFamily="monospace"
             android:lineSpacingExtra="2dp"
-            android:textColor="#3A3A42"
             android:textIsSelectable="true"
             android:textSize="13sp" />
     </LinearLayout>

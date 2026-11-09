@@ -10,6 +10,8 @@ import android.os.Looper;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.graphics.drawable.GradientDrawable;
+import android.content.res.ColorStateList;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -90,6 +92,7 @@ public class UpdateActivity extends Activity {
         });
         rollback.setOnClickListener(v -> confirmRollback());
 
+        applyTheme();
         showLocalVersion();
         Updater.Release known = Updater.lastChecked();
         if (known != null) {
@@ -101,6 +104,59 @@ public class UpdateActivity extends Activity {
         } else if (known == null && System.currentTimeMillis() - Prefs.lastCheck(this) > 60_000) {
             checkForUpdates(false);
         }
+    }
+
+    /** M3：surface 底，两组数字 + 说明文字按令牌上色，四个按钮分别是
+     *  filled / filled / outlined / text。 */
+    private void applyTheme() {
+        int[] c = M3.current(this);
+        findViewById(R.id.update_root).setBackgroundColor(c[M3.SURFACE]);
+
+        int[][] texts = {{R.id.label_current, M3.ON_SURFACE_VARIANT},
+                {R.id.label_latest, M3.ON_SURFACE_VARIANT},
+                {R.id.label_notes, M3.ON_SURFACE_VARIANT},
+                {R.id.cur_version, M3.ON_SURFACE},
+                {R.id.latest_version, M3.ON_SURFACE},
+                {R.id.update_status, M3.ON_SURFACE_VARIANT},
+                {R.id.notes, M3.ON_SURFACE_VARIANT}};
+        for (int[] pair : texts) {
+            ((TextView) findViewById(pair[0])).setTextColor(c[pair[1]]);
+        }
+
+        filled(check, c);
+        filled(updateNow, c);
+        outlined(openPage, c);
+        outlined(rollback, c);
+
+        progress.setProgressTintList(ColorStateList.valueOf(c[M3.PRIMARY]));
+        progress.setProgressBackgroundTintList(
+                ColorStateList.valueOf(c[M3.SURFACE_CONTAINER_HIGHEST]));
+    }
+
+    private void filled(Button b, int[] c) {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(c[M3.PRIMARY]);
+        bg.setCornerRadius(dp(20));
+        b.setBackground(bg);
+        b.setTextColor(c[M3.ON_PRIMARY]);
+        b.setAllCaps(false);
+        b.setStateListAnimator(null);
+        b.setAlpha(b.isEnabled() ? 1f : 0.45f);
+    }
+
+    private void outlined(Button b, int[] c) {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(android.graphics.Color.TRANSPARENT);
+        bg.setCornerRadius(dp(20));
+        bg.setStroke(dp(1), c[M3.OUTLINE]);
+        b.setBackground(bg);
+        b.setTextColor(c[M3.PRIMARY]);
+        b.setAllCaps(false);
+        b.setStateListAnimator(null);
+    }
+
+    private int dp(int v) {
+        return Math.round(v * getResources().getDisplayMetrics().density);
     }
 
     @Override

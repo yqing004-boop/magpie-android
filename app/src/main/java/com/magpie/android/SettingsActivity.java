@@ -1,23 +1,31 @@
 package com.magpie.android;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
-import android.graphics.Color;
+import android.net.Uri;
+import android.content.res.ColorStateList;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Bundle;
+import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.Switch;
+import android.widget.TextView;
 import android.widget.Toast;
 
 /**
  * The three things worth touching on a phone: which port the gateway listens
  * on, whether it is reachable from other devices on the same Wi-Fi, and
  * where magpie looks for its own updates.
+ *
+ * <p>外观部分只有一处真来源：{@link M3} 令牌表。莫奈开关只决定令牌从系统取
+ * 还是从八套种子色生成，页面自己不留任何硬编码颜色。
  *
  * Nothing here is written to magpie's own settings.json — the port and the
  * bind address are handed over as MAGPIE_ADDR when GatewayService starts
@@ -29,13 +37,15 @@ public class SettingsActivity extends Activity {
     private Switch lan;
     private EditText feed;
     private Switch monet;
-    private LinearLayout colorsHeader;
-    private LinearLayout colorsPage;
+    private LinearLayout seedBar;
+
+    private int[] c;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
+        c = M3.current(this);
 
         // 沉浸模式下自己让出状态栏，否则第一行被时间和电量压住
         int sbId = getResources().getIdentifier("status_bar_height", "dimen", "android");
@@ -54,136 +64,264 @@ public class SettingsActivity extends Activity {
         port.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
 
         lan.setChecked(Prefs.lan(this));
-        lan.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton button, boolean checked) {
-                // remembered now; the running gateway comes back up on the new
-                // bind address when Save is pressed
-                Prefs.setLan(SettingsActivity.this, checked);
-            }
-        });
+        lan.setOnCheckedChangeListener((button, checked) -> Prefs.setLan(SettingsActivity.this, checked));
 
         feed.setText(Prefs.updateFeed(this));
         final String beforeNetwork = Prefs.port(this) + "|" + Prefs.lan(this) + "|"
                 + Prefs.updateFeed(this);
 
-        // 外观：莫奈取色（Android 12+）与自定义背景色
         monet = findViewById(R.id.monet);
-        colorsHeader = findViewById(R.id.colors_header);
-        colorsPage = findViewById(R.id.colors_page);
+        seedBar = findViewById(R.id.colors_seed);
         boolean canMonet = Build.VERSION.SDK_INT >= 31;
         monet.setChecked(Prefs.monet(this) && canMonet);
         monet.setEnabled(canMonet);
         if (!canMonet) {
             monet.setText(R.string.settings_monet_unavailable);
         }
-        monet.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton button, boolean checked) {
-                Prefs.setMonet(SettingsActivity.this, checked);
-                if (checked) {
-                    Prefs.setHeaderColor(SettingsActivity.this, 0);
-                    Prefs.setPageColor(SettingsActivity.this, 0);
-                }
-                paintSwatches();
+        monet.setOnCheckedChangeListener((button, checked) -> {
+            if (checked == Prefs.monet(SettingsActivity.this)) {
+                return;
             }
+            Prefs.setMonet(SettingsActivity.this, checked);
+            recreate();
         });
-        paintSwatches();
 
         Button save = findViewById(R.id.save);
-        save.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                Prefs.setPort(SettingsActivity.this, port.getText().toString());
-                Prefs.setUpdateFeed(SettingsActivity.this, feed.getText().toString());
-                // 只有端口 / 局域网 / 更新源变了才需要重启网关；换个背景色不该
-                // 把 agent 的连接掐断
-                String now = Prefs.port(SettingsActivity.this) + "|" + Prefs.lan(SettingsActivity.this)
-                        + "|" + Prefs.updateFeed(SettingsActivity.this);
-                if (!now.equals(beforeNetwork)) {
-                    GatewayService.restart(SettingsActivity.this);
-                }
-                Toast.makeText(SettingsActivity.this, R.string.settings_save,
-                        Toast.LENGTH_SHORT).show();
-                setResult(RESULT_OK);
-                finish();
+        save.setOnClickListener(v -> {
+            Prefs.setPort(SettingsActivity.this, port.getText().toString());
+            Prefs.setUpdateFeed(SettingsActivity.this, feed.getText().toString());
+            // 只有端口 / 局域网 / 更新源变了才需要重启网关；换个主题色不该
+            // 把 agent 的连接掐断
+            String now = Prefs.port(SettingsActivity.this) + "|" + Prefs.lan(SettingsActivity.this)
+                    + "|" + Prefs.updateFeed(SettingsActivity.this);
+            if (!now.equals(beforeNetwork)) {
+                GatewayService.restart(SettingsActivity.this);
             }
+            Toast.makeText(SettingsActivity.this, R.string.settings_save,
+                    Toast.LENGTH_SHORT).show();
+            setResult(RESULT_OK);
+            finish();
         });
 
         Button restart = findViewById(R.id.restart);
-        restart.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                GatewayService.restart(SettingsActivity.this);
-                setResult(RESULT_OK);
-                finish();
-            }
+        restart.setOnClickListener(v -> {
+            GatewayService.restart(SettingsActivity.this);
+            setResult(RESULT_OK);
+            finish();
         });
 
         // magpie 本体是那个 ELF，不是这个 APK：更新在这里，更新完网关重启就位
         Button checkUpdate = findViewById(R.id.check_update);
-        checkUpdate.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                startActivity(new Intent(SettingsActivity.this, UpdateActivity.class));
+        checkUpdate.setOnClickListener(v ->
+                startActivity(new Intent(SettingsActivity.this, UpdateActivity.class)));
+
+        // 壳自己的更新：查 GitHub Release，只提示 + 跳页，不碰 APK 安装
+        Button checkShell = findViewById(R.id.check_shell);
+        checkShell.setOnClickListener(v -> checkShellUpdate());
+
+        paint();
+    }
+
+    /** 查这个 App 在 GitHub 开源仓库里的新版本，只提示、跳到 Release 页。 */
+    private void checkShellUpdate() {
+        final String local = ShellUpdater.localVersion(this);
+        ShellUpdater.check(this, r -> {
+            if (!r.ok()) {
+                Toast.makeText(this, getString(R.string.shell_update_failed, r.error),
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+            final boolean newer = ShellUpdater.newer(r.latestTag, local);
+            AlertDialog dlg = new AlertDialog.Builder(this)
+                    .setTitle(R.string.shell_update_title)
+                    .setMessage(newer
+                            ? getString(R.string.shell_update_available, r.latestTag)
+                            : getString(R.string.shell_update_latest, local))
+                    .setPositiveButton(newer ? R.string.shell_update_go : android.R.string.ok,
+                            (d, w) -> {
+                                if (newer) {
+                                    openUrl(r.page);
+                                }
+                            })
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .create();
+            styleDialog(dlg);
+            dlg.show();
+        });
+    }
+
+    /** 给系统 AlertDialog 换 M3 底色，把标题/正文/按钮刷成对应前景。 */
+    private void styleDialog(android.app.AlertDialog dlg) {
+        int[] c = M3.current(this);
+        dlg.setOnShowListener(x -> {
+            android.view.Window w = dlg.getWindow();
+            if (w != null) {
+                GradientDrawable bg = new GradientDrawable();
+                bg.setColor(c[M3.SURFACE_CONTAINER_HIGH]);
+                bg.setCornerRadius(dp(28));
+                w.setBackgroundDrawable(bg);
+            }
+            int titleId = getResources().getIdentifier("alertTitle", "id", "android");
+            TextView title = titleId > 0 ? dlg.findViewById(titleId) : null;
+            if (title != null) {
+                title.setTextColor(c[M3.ON_SURFACE]);
+            }
+            TextView msg = dlg.findViewById(android.R.id.message);
+            if (msg != null) {
+                msg.setTextColor(c[M3.ON_SURFACE_VARIANT]);
+            }
+            for (int id : new int[]{android.app.AlertDialog.BUTTON_POSITIVE,
+                    android.app.AlertDialog.BUTTON_NEUTRAL,
+                    android.app.AlertDialog.BUTTON_NEGATIVE}) {
+                Button b = dlg.getButton(id);
+                if (b != null) {
+                    b.setTextColor(c[M3.PRIMARY]);
+                }
             }
         });
     }
 
-    /** 背景色板：第一块是「跟随系统」，剩下的都是柔和底色，最后一块深色。 */
-    private static final int[] PALETTE = {
-            0, 0xFFF4F4F8, 0xFFFBF6EF, 0xFFEAF2FB,
-            0xFFEAF6EC, 0xFFF3EDFA, 0xFFFBEFF2, 0xFF272430
-    };
-
-    private void paintSwatches() {
-        if (colorsHeader == null || colorsPage == null) {
-            return;
+    private void openUrl(String url) {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+        } catch (Exception e) {
+            Toast.makeText(this, url, Toast.LENGTH_LONG).show();
         }
-        int accent = MainActivity.accentOf(this);
-        fillSwatches(colorsHeader, Prefs.headerColor(this), accent, true);
-        fillSwatches(colorsPage, Prefs.pageColor(this), accent, false);
     }
 
-    /** 一组色板：第一块是「跟随系统」，点了就把这组清回 0。 */
-    private void fillSwatches(LinearLayout box, int current, int accent, final boolean header) {
-        box.removeAllViews();
-        int size = Math.round(42 * getResources().getDisplayMetrics().density);
-        int gap = Math.round(8 * getResources().getDisplayMetrics().density);
-        for (int i = 0; i < PALETTE.length; i++) {
-            final int color = PALETTE[i];
-            View sw = new View(this);
+    // ------------------------------------------------------------------
+    // M3 主题
+
+    private void paint() {
+        int surface = c[M3.SURFACE];
+        findViewById(R.id.settings_root).setBackgroundColor(surface);
+        ((TextView) findViewById(R.id.settings_title)).setTextColor(c[M3.ON_SURFACE]);
+
+        int[] cards = {R.id.card_port, R.id.card_lan, R.id.card_feed,
+                R.id.card_appearance, R.id.card_seed};
+        for (int id : cards) {
+            View card = findViewById(id);
+            GradientDrawable bg = new GradientDrawable();
+            bg.setColor(c[M3.SURFACE_CONTAINER_LOW]);
+            bg.setCornerRadius(dp(20));
+            card.setBackground(bg);
+        }
+
+        int[] labels = {R.id.label_port, R.id.label_feed, R.id.label_seed};
+        for (int id : labels) {
+            ((TextView) findViewById(id)).setTextColor(c[M3.ON_SURFACE]);
+        }
+        int[] hints = {R.id.hint_port, R.id.hint_lan, R.id.monet_hint, R.id.hint_seed};
+        for (int id : hints) {
+            ((TextView) findViewById(id)).setTextColor(c[M3.ON_SURFACE_VARIANT]);
+        }
+
+        field(port);
+        field(feed);
+        tintSwitch(lan);
+        tintSwitch(monet);
+        ((Switch) lan).setTextColor(c[M3.ON_SURFACE]);
+        ((Switch) monet).setTextColor(c[M3.ON_SURFACE]);
+
+        // check update：outlined tonal —— surface 底 + outline 边 + primary 字
+        Button check = findViewById(R.id.check_update);
+        GradientDrawable outlined = new GradientDrawable();
+        outlined.setColor(c[M3.SURFACE]);
+        outlined.setCornerRadius(dp(20));
+        outlined.setStroke(dp(1), c[M3.OUTLINE]);
+        check.setBackground(outlined);
+        check.setTextColor(c[M3.PRIMARY]);
+        check.setAllCaps(false);
+
+        filled(findViewById(R.id.save));
+        tonal(findViewById(R.id.restart));
+
+        paintSeeds();
+    }
+
+    /** 输入框：M3 filled text field 的简化版。 */
+    private void field(EditText e) {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(c[M3.SURFACE_CONTAINER_HIGHEST]);
+        bg.setCornerRadius(dp(12));
+        bg.setStroke(dp(1), c[M3.OUTLINE_VARIANT]);
+        e.setBackground(bg);
+        e.setTextColor(c[M3.ON_SURFACE]);
+        e.setHintTextColor(c[M3.ON_SURFACE_VARIANT]);
+    }
+
+    private void tintSwitch(Switch sw) {
+        ColorStateList thumb = new ColorStateList(
+                new int[][]{{android.R.attr.state_checked}, {-android.R.attr.state_checked}},
+                new int[]{c[M3.ON_PRIMARY], c[M3.OUTLINE]});
+        ColorStateList track = new ColorStateList(
+                new int[][]{{android.R.attr.state_checked}, {-android.R.attr.state_checked}},
+                new int[]{c[M3.PRIMARY], c[M3.SURFACE_CONTAINER_HIGHEST]});
+        sw.setThumbTintList(thumb);
+        sw.setTrackTintList(track);
+    }
+
+    /** M3 filled：primary 底 + on-primary 字。 */
+    private void filled(Button b) {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(c[M3.PRIMARY]);
+        bg.setCornerRadius(dp(20));
+        b.setBackground(bg);
+        b.setTextColor(c[M3.ON_PRIMARY]);
+        b.setAllCaps(false);
+        b.setStateListAnimator(null);
+    }
+
+    /** M3 filled tonal：secondary container 底。 */
+    private void tonal(Button b) {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(c[M3.SECONDARY_CONTAINER]);
+        bg.setCornerRadius(dp(20));
+        b.setBackground(bg);
+        b.setTextColor(c[M3.ON_SECONDARY_CONTAINER]);
+        b.setAllCaps(false);
+        b.setStateListAnimator(null);
+    }
+
+    /** 八套种子色：均分一排圆点，选中的加一圈 on-surface 描边。 */
+    private void paintSeeds() {
+        seedBar.removeAllViews();
+        int size = dp(40);
+        int gap = dp(6);
+        int selected = Prefs.seed(this);
+        for (int i = 0; i < M3.SEEDS.length; i++) {
+            final int index = i;
+            TextView dot = new TextView(this);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, size, 1f);
-            lp.rightMargin = i == PALETTE.length - 1 ? 0 : gap;
-            sw.setLayoutParams(lp);
+            lp.rightMargin = i == M3.SEEDS.length - 1 ? 0 : gap;
+            dot.setLayoutParams(lp);
+            dot.setGravity(Gravity.CENTER);
+            dot.setContentDescription(M3.SEED_NAMES[i]);
+            dot.setText(selected == i ? "\u2713" : "");
+            dot.setTextSize(16);
 
             GradientDrawable bg = new GradientDrawable();
-            bg.setCornerRadius(Math.round(10 * getResources().getDisplayMetrics().density));
-            bg.setColor(color == 0 ? 0xFFFFFFFF : color);
-            boolean picked = current == color;
-            bg.setStroke(Math.round((picked ? 3 : 1) * getResources().getDisplayMetrics().density),
-                    picked ? (accent != 0 ? accent : 0xFF8A4B32) : 0xFFDCD6D2);
-            sw.setBackground(bg);
-
-            if (color == 0) {
-                sw.setContentDescription(getString(R.string.settings_bg_default));
+            bg.setShape(GradientDrawable.OVAL);
+            bg.setColor(M3.seedColor(this, i));
+            if (selected == i) {
+                bg.setStroke(dp(3), c[M3.ON_SURFACE]);
+                dot.setTextColor(M3.onSeed(this, i));
             }
-            sw.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    if (header) {
-                        Prefs.setHeaderColor(SettingsActivity.this, color);
-                    } else {
-                        Prefs.setPageColor(SettingsActivity.this, color);
-                    }
-                    if (color != 0) {
-                        Prefs.setMonet(SettingsActivity.this, false);
-                        monet.setChecked(false);
-                    }
-                    paintSwatches();
+            dot.setBackground(bg);
+            dot.setOnClickListener(v -> {
+                if (Prefs.seed(SettingsActivity.this) == index
+                        && !Prefs.monet(SettingsActivity.this)) {
+                    return;
                 }
+                Prefs.setSeed(SettingsActivity.this, index);
+                Prefs.setMonet(SettingsActivity.this, false);
+                recreate();
             });
-            box.addView(sw);
+            seedBar.addView(dot);
         }
+    }
+
+    private int dp(int v) {
+        return Math.round(v * getResources().getDisplayMetrics().density);
     }
 }

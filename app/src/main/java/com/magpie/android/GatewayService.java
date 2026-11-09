@@ -216,6 +216,7 @@ public class GatewayService extends Service {
 
     private void boot() {
         try {
+            patchPlugins(this);
             File bin = ensureBinary(this);
             quietOwnUpdater(bin);
             startProcess(this, bin);
@@ -665,6 +666,203 @@ public class GatewayService extends Service {
             return true;
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // 插件补丁表：桌面浏览器 / 桌面进程内存这些东西 Android 上没有，
+    // 靠这张表把插件的登录换成一条 Android 能走的路
+    // ------------------------------------------------------------------
+
+    /**
+     * 一条插件补丁。
+     *
+     * <p>{@code anchor} 是插件里稳定的一段源码，{@code replacement} 是换成带
+     * Android 兜底的版本，{@code helper} 追加到文件末尾（新增的函数定义）。
+     *
+     * <p>只做锚点替换：锚点找不到就跳过、只记一行日志 —— 绝不整文件覆盖，
+     * 否则插件作者的新逻辑会被一起丢掉。
+     */
+    private static final class Patch {
+        final String id;
+        final String file;
+        final String mark;
+        final String helperMark;
+        final String anchor;
+        final String replacement;
+        final String helper;
+
+        Patch(String id, String file, String mark, String helperMark,
+              String anchor, String replacement, String helper) {
+            this.id = id;
+            this.file = file;
+            this.mark = mark;
+            this.helperMark = helperMark;
+            this.anchor = anchor;
+            this.replacement = replacement;
+            this.helper = helper;
+        }
+    }
+
+    private static final String MARVIS_FILE =
+            "data/plugins/node_modules/magpie-marvis/src/hooks/methods.mjs";
+    private static final String MARVIS_MARK = "MAGPIE_ANDROID_PASTE";
+    private static final String MARVIS_HELPER_MARK = "MAGPIE_ANDROID_PASTE_HELPER";
+
+    private static final String MARVIS_ANCHOR =
+            "        async callback(_url, _input, signal) {\n"
+                    + "          const browser = findBrowser()";
+
+    private static final String MARVIS_REPLACEMENT =
+            "        async callback(_url, _input, signal) {\n"
+                    + "          /* MAGPIE_ANDROID_PASTE */\n"
+                    + "          // Android 上没有可 spawn 的 Chromium：等壳把用户粘贴的回调地址写进文件。\n"
+                    + "          if (!findBrowser()) {\n"
+                    + "            const pasted = await waitPastedCallback(signal)\n"
+                    + "            const st = stateOfUrl(pasted)\n"
+                    + "            const vg = pendingDevices.take(st) || (loginType === \"WX\" ? st : \"\")\n"
+                    + "            if (!vg) {\n"
+                    + "              throw new Error(\"登录流程已失效（找不到这次登录的设备标识）。请重新点一次登录。\")\n"
+                    + "            }\n"
+                    + "            let acct = await parseCallback(pasted, \"\", { loginType, guid: vg })\n"
+                    + "            acct = await withProfile({ ...acct, guid: vg }, loginType)\n"
+                    + "            return authOf({ ...acct, guid: vg, loginType: acct.loginType ?? LOGIN_TYPE[loginType] ?? \"1\" })\n"
+                    + "          }\n"
+                    + "          const browser = findBrowser()";
+
+    private static final String MARVIS_HELPER = "\n\n/* MAGPIE_ANDROID_PASTE_HELPER */\n"
+            + "// 壳把粘贴的回调地址写在 HOME/marvis-login-url.txt，读完即删。\n"
+            + "async function waitPastedCallback(signal) {\n"
+            + "  const fs = await import(\"node:fs/promises\")\n"
+            + "  const os = await import(\"node:os\")\n"
+            + "  const path = await import(\"node:path\")\n"
+            + "  const file = path.join(os.homedir(), \"marvis-login-url.txt\")\n"
+            + "  const started = Date.now()\n"
+            + "  while (Date.now() - started < 10 * 60_000) {\n"
+            + "    if (signal && signal.aborted) throw new Error(\"登录已取消\")\n"
+            + "    try {\n"
+            + "      const raw = (await fs.readFile(file, \"utf8\")).trim()\n"
+            + "      if (raw) {\n"
+            + "        await fs.unlink(file).catch(() => {})\n"
+            + "        return raw\n"
+            + "      }\n"
+            + "    } catch {\n"
+            + "      /* 还没写进来 */\n"
+            + "    }\n"
+            + "    await new Promise((r) => setTimeout(r, 500))\n"
+            + "  }\n"
+            + "  throw new Error(\"等待粘贴 Marvis 授权回调超时（10 分钟）。请重新点一次登录。\")\n"
+            + "}\n";
+
+    /** 已知需要 Android 适配的插件。加新插件就往这里加一条。 */
+    private static final Patch[] PATCHES = {
+            new Patch("magpie-marvis", MARVIS_FILE, MARVIS_MARK, MARVIS_HELPER_MARK,
+                    MARVIS_ANCHOR, MARVIS_REPLACEMENT, MARVIS_HELPER),
+    };
+
+    /** 补丁出问题时留给 UI 的一句话（一次性，读完即清）。 */
+    private static volatile String patchNote = "";
+
+    static String takePatchNote() {
+        String n = patchNote;
+        patchNote = "";
+        return n;
+    }
+
+    /** 每次启动网关前跑一遍：已经补过的跳过，插件更新后被覆盖的补回来。 */
+    static void patchPlugins(Context ctx) {
+        for (Patch p : PATCHES) {
+            applyPatch(ctx, p);
+        }
+    }
+
+    private static void applyPatch(Context ctx, Patch p) {
+        File f = new File(rootDir(ctx), p.file);
+        if (!f.isFile()) {
+            return; // 没装这个插件
+        }
+        String src;
+        try {
+            src = readText(f);
+        } catch (IOException e) {
+            appendLog("插件补丁：读不到 " + p.id + "（" + e.getMessage() + "）");
+            return;
+        }
+        if (src.contains(p.mark) && src.contains(p.helperMark)) {
+            return; // 已经补过
+        }
+        if (!src.contains(p.anchor)) {
+            patchNote = p.id + " 的兼容补丁没生效：插件已改版，需要更新这个 App";
+            appendLog("插件补丁跳过：" + p.id + " 锚点找不到（插件结构变了）");
+            return;
+        }
+        String out = src.replace(p.anchor, p.replacement);
+        if (!out.contains(p.helperMark)) {
+            out = out + p.helper;
+        }
+        try {
+            try (FileOutputStream o = new FileOutputStream(f)) {
+                o.write(out.getBytes(StandardCharsets.UTF_8));
+            }
+            appendLog("插件补丁已写入：" + p.id);
+        } catch (IOException e) {
+            patchNote = p.id + " 的兼容补丁写不进去";
+            appendLog("插件补丁写入失败：" + p.id + " " + e.getMessage());
+        }
+    }
+
+    /** 给「粘贴 Marvis 授权回调」对话框看的：插件在不在、版本、补丁状态。 */
+    static String patchStatus(Context ctx) {
+        StringBuilder sb = new StringBuilder();
+        for (Patch p : PATCHES) {
+            File f = new File(rootDir(ctx), p.file);
+            String ver = pluginVersion(ctx, p.id);
+            sb.append(p.id).append(ver.isEmpty() ? "" : " " + ver).append("：");
+            if (!f.isFile()) {
+                sb.append("没装这个插件");
+            } else {
+                String src;
+                try {
+                    src = readText(f);
+                } catch (IOException e) {
+                    src = "";
+                }
+                if (src.contains(p.mark) && src.contains(p.helperMark)) {
+                    sb.append("兼容补丁已生效");
+                } else if (src.contains(p.anchor)) {
+                    sb.append("补丁待写入（重启网关即可）");
+                } else {
+                    sb.append("补丁不适用（插件已改版，需要更新这个 App）");
+                }
+            }
+            sb.append('\n');
+        }
+        return sb.toString().trim();
+    }
+
+    private static String pluginVersion(Context ctx, String id) {
+        File f = new File(rootDir(ctx), "data/plugins/node_modules/" + id + "/package.json");
+        if (!f.isFile()) {
+            return "";
+        }
+        try {
+            java.util.regex.Matcher m = java.util.regex.Pattern
+                    .compile("\"version\"\\s*:\\s*\"([^\"]+)\"").matcher(readText(f));
+            return m.find() ? m.group(1) : "";
+        } catch (IOException e) {
+            return "";
+        }
+    }
+
+    private static String readText(File f) throws IOException {
+        try (InputStream in = new java.io.FileInputStream(f);
+             java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) != -1) {
+                out.write(buf, 0, n);
+            }
+            return out.toString("UTF-8");
         }
     }
 

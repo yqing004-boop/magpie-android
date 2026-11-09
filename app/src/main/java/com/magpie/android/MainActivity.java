@@ -22,6 +22,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.text.method.ScrollingMovementMethod;
 import android.util.Log;
+import android.util.TypedValue;
 import android.view.KeyEvent;
 import android.view.View;
 import android.webkit.CookieManager;
@@ -130,6 +131,9 @@ public class MainActivity extends Activity {
         showLog.setOnClickListener(v -> showLog());
         statusSettings.setOnClickListener(v -> openSettings());
         menu.setOnClickListener(v -> showSheet());
+        // MIUI 的侧边返回手势把屏幕右缘那一条算作返回区，右上角的 ⋮ 有一半落进去，
+        // 点下去被系统当成返回、App 直接退出。报一块手势排除区把这块要回来。
+        excludeFromGestures(menu);
         gwPill.setOnClickListener(v -> copyGateway());
         gwPill.setOnLongClickListener(v -> {
             openInBrowser();
@@ -178,7 +182,7 @@ public class MainActivity extends Activity {
         w.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
         w.setStatusBarColor(Color.TRANSPARENT);
         w.setNavigationBarColor(Color.TRANSPARENT);
-        applySystemBars(Prefs.pageColor(this) != 0 ? Prefs.pageColor(this) : 0xFFF1EFEC);
+        applySystemBars(M3.current(this)[M3.SURFACE]);
 
         // 整个壳往下让出状态栏，顶栏就不会钻进时间/电量那一条里
         int sb = barHeight("status_bar_height");
@@ -217,22 +221,6 @@ public class MainActivity extends Activity {
     // 外观：莫奈取色 / 自定义背景色
     // ------------------------------------------------------------------
 
-    /** 从系统里取莫奈强调色；Android 12 以下或者没开就是 0。 */
-    static int accentOf(Context ctx) {
-        if (!Prefs.monet(ctx)) {
-            return 0;
-        }
-        int id = ctx.getResources().getIdentifier("system_accent1_400", "color", "android");
-        if (id == 0) {
-            return 0;
-        }
-        try {
-            return ctx.getResources().getColor(id);
-        } catch (Exception e) {
-            return 0;
-        }
-    }
-
     static int mix(int a, int b, float t) {
         int ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
         int br = (b >> 16) & 0xff, bg2 = (b >> 8) & 0xff, bb = b & 0xff;
@@ -247,56 +235,67 @@ public class MainActivity extends Activity {
         return lum < 0.5;
     }
 
+    /** 一块 M3 圆角底。 */
+    private GradientDrawable rounded(int color, int radiusDp) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(color);
+        d.setCornerRadius(dp(radiusDp));
+        return d;
+    }
+
+    /** M3 filled tonal 按钮：secondary container 底 + on-secondary container 字。 */
+    private void tonalButton(Button b, int[] s) {
+        b.setBackground(rounded(s[M3.SECONDARY_CONTAINER], 20));
+        b.setTextColor(s[M3.ON_SECONDARY_CONTAINER]);
+        b.setAllCaps(false);
+        b.setStateListAnimator(null);
+        b.setPadding(dp(24), dp(12), dp(24), dp(12));
+    }
+
+    /**
+     * 把整套 M3 令牌刷到壳上：顶栏用 surface container、内容卡用
+     * surface container lowest + outline variant 细边、chip 用 assist chip 样式。
+     * 页面本身的深浅仍由 magpie 自己的设置决定，壳不越权改它。
+     */
     private void applyTheme() {
-        int accent = accentOf(this);
-        int headerColor = Prefs.headerColor(this);
-        int pageColor = Prefs.pageColor(this);
+        int[] s = M3.current(this);
+        int surface = s[M3.SURFACE];
+        int onSurface = s[M3.ON_SURFACE];
+        int onVariant = s[M3.ON_SURFACE_VARIANT];
 
-        int card = headerColor != 0 ? headerColor
-                : (accent != 0 ? mix(accent, Color.WHITE, 0.80f) : 0xFFFBF2EE);
-        int page = pageColor != 0 ? pageColor
-                : (accent != 0 ? mix(accent, Color.WHITE, 0.94f) : 0xFFF1EFEC);
-        boolean darkCard = darkColor(card);
-        int ink = darkCard ? 0xFFF4F1EF : 0xFF2A2320;
-        int subInk = darkCard ? 0xFFC9C3C0 : 0xFF6B625D;
+        header.setBackground(rounded(s[M3.SURFACE_CONTAINER], 24));
 
-        GradientDrawable cardBg = new GradientDrawable();
-        cardBg.setColor(card);
-        cardBg.setCornerRadius(dp(22));
-        header.setBackground(cardBg);
-
-        GradientDrawable pill = new GradientDrawable();
-        pill.setColor(mix(card, Color.WHITE, 0.45f));
-        pill.setCornerRadius(dp(16));
-        pill.setStroke(dp(1), accent != 0 ? accent : 0xFFE7CCC1);
-        gwPill.setBackground(pill);
-        gwPill.setTextColor(accent != 0 ? mix(accent, Color.BLACK, 0.35f)
-                : (darkCard ? 0xFFE6D8D0 : 0xFF8A4B32));
+        GradientDrawable chip = rounded(s[M3.SURFACE], 16);
+        chip.setStroke(dp(1), s[M3.OUTLINE_VARIANT]);
+        gwPill.setBackground(chip);
+        gwPill.setTextColor(onVariant);
 
         GradientDrawable av = new GradientDrawable();
         av.setShape(GradientDrawable.OVAL);
-        av.setColor(mix(card, accent != 0 ? accent : 0xFFF5E4DC,
-                accent != 0 ? 0.35f : 0f));
+        av.setColor(s[M3.PRIMARY_CONTAINER]);
         avatar.setBackground(av);
 
-        headerTitle.setTextColor(ink);
-        stateText.setTextColor(subInk);
+        headerTitle.setTextColor(onSurface);
+        stateText.setTextColor(onVariant);
         if (menu instanceof TextView) {
-            ((TextView) menu).setTextColor(subInk);
+            ((TextView) menu).setTextColor(onVariant);
         }
 
-        // 内容区：圆角底 + 四周底色，两个都跟着「内容背景色」走
-        GradientDrawable content = new GradientDrawable();
-        content.setColor(page);
-        content.setCornerRadius(dp(20));
+        GradientDrawable content = rounded(s[M3.SURFACE_CONTAINER_LOWEST], 24);
+        content.setStroke(dp(1), s[M3.OUTLINE_VARIANT]);
         if (webCard != null) {
             webCard.setBackground(content);
         }
-        findViewById(R.id.root).setBackgroundColor(page);
-        overlay.setBackgroundColor(page);
+        findViewById(R.id.root).setBackgroundColor(surface);
+        overlay.setBackgroundColor(surface);
 
-        // 换色后状态栏图标的深浅也要跟着翻
-        applySystemBars(page);
+        statusTitle.setTextColor(onSurface);
+        statusBody.setTextColor(onVariant);
+        tonalButton(retry, s);
+        tonalButton(showLog, s);
+        tonalButton(statusSettings, s);
+
+        applySystemBars(surface);
         paintPageBackground();
     }
 
@@ -312,26 +311,16 @@ public class MainActivity extends Activity {
         if (web == null) {
             return;
         }
-        int custom = Prefs.pageColor(this);
-        int accent = accentOf(this);
-        int base = custom != 0 ? custom
-                : (accent != 0 ? mix(accent, Color.WHITE, 0.94f) : 0);
-        web.setBackgroundColor(base != 0 ? base : 0xFFFFFFFF);
-
-        // 页面里有些元素（浮动按钮、滚动条）会画到圆角外面，撑一块同色遮罩压住四角
+        int[] c = M3.current(this);
+        int surface = c[M3.SURFACE];
+        web.setBackgroundColor(surface);
         if (webCard instanceof android.widget.FrameLayout) {
-            ((android.widget.FrameLayout) webCard).setForeground(
-                    base != 0 && custom != 0 ? new CornerMask(base, dp(20)) : null);
+            ((android.widget.FrameLayout) webCard).setForeground(new CornerMask(surface, dp(24)));
         }
-
         if (!loaded) {
             return; // 页面还没加载好，onPageFinished 里会再来一次
         }
-        if (custom == 0) {
-            inject(null); // 跟随系统/莫奈：把注入的样式摘掉，页面恢复原样
-            return;
-        }
-        inject(pageCss(custom));
+        inject(pageCss(c));
     }
 
     /**
@@ -342,29 +331,27 @@ public class MainActivity extends Activity {
      * 直接把这些变量按用户选的颜色重算一遍，整页才会真的一块变色；顺带把文字色
      * 按背景深浅翻过来，不至于看不清。
      */
-    private String pageCss(int color) {
-        boolean dark = darkColor(color);
-        // 卡片靠近白、底层留用户选的颜色 —— 整页有色调，但卡片还是卡片
-        int card = dark ? mix(color, Color.BLACK, 0.30f) : mix(color, Color.WHITE, 0.86f);
-        int card2 = dark ? mix(color, Color.BLACK, 0.18f) : mix(color, Color.WHITE, 0.74f);
-        int bar = dark ? mix(color, Color.BLACK, 0.40f) : mix(color, Color.WHITE, 0.62f);
-        String fg = dark ? "#f2f2f4" : "#1c1c1e";
-        String muted = dark ? "#a9a9b0" : "#6b6b70";
-        String faint = dark ? "#7c7c84" : "#9a9a9e";
-        String line = dark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.09)";
+    private String pageCss(int[] c) {
+        String bg = hex(c[M3.SURFACE]);
         return ":root,html,body{"
-                + "--bg:" + hex(color) + "!important;"
-                + "--card:" + hex(card) + "!important;"
-                + "--card-2:" + hex(card2) + "!important;"
-                + "--bar:" + hex(bar) + "!important;"
-                + "--pill:" + hex(bar) + "!important;"
-                + "--fg:" + fg + "!important;"
-                + "--muted:" + muted + "!important;"
-                + "--faint:" + faint + "!important;"
-                + "--line:" + line + "!important;"
+                + "--bg:" + bg + "!important;"
+                + "--card:" + hex(c[M3.SURFACE_CONTAINER_LOW]) + "!important;"
+                + "--card-2:" + hex(c[M3.SURFACE_CONTAINER]) + "!important;"
+                + "--bar:" + hex(c[M3.SURFACE_CONTAINER_HIGH]) + "!important;"
+                + "--pill:" + hex(c[M3.PRIMARY_CONTAINER]) + "!important;"
+                + "--fg:" + hex(c[M3.ON_SURFACE]) + "!important;"
+                + "--muted:" + hex(c[M3.ON_SURFACE_VARIANT]) + "!important;"
+                + "--faint:" + hex(c[M3.OUTLINE]) + "!important;"
+                + "--line:" + hex(c[M3.OUTLINE_VARIANT]) + "!important;"
                 + "}"
-                + "html{background:" + hex(color) + "!important}"
-                + "body{background-color:" + hex(color) + "!important}";
+                + "html{background:" + bg + "!important}"
+                + "body{background-color:" + bg + "!important}"
+                // 手机上这两条是 position:sticky：一条钉在 view 顶部（资源库/插件页的
+                // tab 行），一条钉在底部（插件页的「有想装的」输入条）。钉住时它们用
+                // 半透明毛玻璃铺底，滚动中会和卡片文字叠在一起看不清。改成 static，
+                // 让它们跟着内容滚走；撑底的 ::before 一并去掉，否则绝对定位会乱飘。
+                + ".lib-head,.pm-manual{position:static!important}"
+                + ".lib-head::before,.pm-manual::before{display:none!important}";
     }
 
     private static String hex(int c) {
@@ -475,6 +462,10 @@ public class MainActivity extends Activity {
         super.onResume();
         // 从设置页回来可能换了背景/莫奈色，重画一遍
         applyTheme();
+        String patchNote = GatewayService.takePatchNote();
+        if (patchNote != null && !patchNote.isEmpty()) {
+            Toast.makeText(this, patchNote, Toast.LENGTH_LONG).show();
+        }
         refreshHeader();
         if (!loaded && !polling && GatewayService.isAlive()) {
             poll();
@@ -588,22 +579,32 @@ public class MainActivity extends Activity {
                 if (isInternal(u)) {
                     return false;
                 }
+                String scheme = schemeOf(u);
+                if (!"http".equals(scheme) && !"https".equals(scheme) && !"intent".equals(scheme)) {
+                    // javascript:/about:/data:/blob: 是页面自己的动作（复制、下载、
+                    // 打开面板都靠它们），交给外部 Activity 会把页面打断；留在
+                    // WebView 里由页面自己处理。
+                    return false;
+                }
                 openExternal(u);
                 return true;
             }
 
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-                if (isInternal(request.getUrl().toString())) {
-                    showStatus();
+                if (request != null && request.isForMainFrame()
+                        && isInternal(request.getUrl().toString())) {
+                    confirmGatewayDown();
                 }
             }
 
             @Override
             public void onReceivedHttpError(WebView view, WebResourceRequest request,
                                             WebResourceResponse response) {
-                if (isInternal(request.getUrl().toString()) && response.getStatusCode() >= 500) {
-                    showStatus();
+                if (request != null && request.isForMainFrame()
+                        && isInternal(request.getUrl().toString())
+                        && response.getStatusCode() >= 500) {
+                    confirmGatewayDown();
                 }
             }
 
@@ -614,7 +615,7 @@ public class MainActivity extends Activity {
                     hideOverlay();
                     paintPageBackground();
                     if (!GatewayService.isAlive()) {
-                        showStatus();
+                        confirmGatewayDown();
                     } else {
                         ui.postDelayed(heartbeat, 15000);
                     }
@@ -670,9 +671,12 @@ public class MainActivity extends Activity {
                                           android.os.Message resultMsg) {
                 WebView.HitTestResult hit = view.getHitTestResult();
                 String extra = hit == null ? null : hit.getExtra();
-                if (extra != null && !extra.isEmpty()) {
-                    openExternal(extra);
-                    return true;
+                if (extra != null && !extra.isEmpty() && !isInternal(extra)) {
+                    String scheme = schemeOf(extra);
+                    if ("http".equals(scheme) || "https".equals(scheme) || "intent".equals(scheme)) {
+                        openExternal(extra);
+                        return true;
+                    }
                 }
                 return false;
             }
@@ -739,14 +743,68 @@ public class MainActivity extends Activity {
         }
     }
 
+    /**
+     * 真正的 magpie 页面 = http(s) + 本机主机 + magpie 自己的端口。
+     *
+     * <p>复制按钮、下载、剪贴板这些页面内动作会用到 {@code javascript:}、
+     * {@code about:}、{@code blob:}、{@code data:} 之类的地址：它们既不该被当成
+     * "外部链接"交给系统浏览器，也不该被当成"我们的页面出错"。以前只按 host
+     * 判断（这些地址的 host 是空的就落到 else 分支），一次复制就可能把整页顶成
+     * 网关错误页。这里把协议和端口都算进来。
+     */
     private boolean isInternal(String url) {
+        String scheme = schemeOf(url);
+        if (!"http".equals(scheme) && !"https".equals(scheme)) {
+            return false;
+        }
         String host = hostOf(url);
         if (host.isEmpty()) {
             return false;
         }
-        return host.equals("127.0.0.1") || host.equals("localhost") || host.equals("0.0.0.0")
-                || host.equals("::1") || host.equals("magpie") || host.endsWith(".magpie")
+        boolean local = host.equals("127.0.0.1") || host.equals("localhost")
+                || host.equals("0.0.0.0") || host.equals("::1")
+                || host.equals("magpie") || host.endsWith(".magpie")
                 || internalHosts.contains(host);
+        if (!local) {
+            return false;
+        }
+        int port = portOf(url);
+        return port == GatewayService.webPort(this) || port == GatewayService.gatewayPort(this);
+    }
+
+    private static String schemeOf(String url) {
+        if (url == null) {
+            return "";
+        }
+        int colon = url.indexOf(':');
+        return colon <= 0 ? "" : url.substring(0, colon).toLowerCase(java.util.Locale.ROOT);
+    }
+
+    private static int portOf(String url) {
+        String host = hostOf(url);
+        int scheme = url.indexOf("://");
+        if (scheme < 0) {
+            return -1;
+        }
+        String rest = url.substring(scheme + 3);
+        String hostPart = rest;
+        int slash = hostPart.indexOf('/');
+        if (slash >= 0) {
+            hostPart = hostPart.substring(0, slash);
+        }
+        int at = hostPart.lastIndexOf('@');
+        if (at >= 0) {
+            hostPart = hostPart.substring(at + 1);
+        }
+        int colon = hostPart.lastIndexOf(':');
+        if (colon < 0 || colon < hostPart.length() - 6) {
+            return -1;
+        }
+        try {
+            return Integer.parseInt(hostPart.substring(colon + 1));
+        } catch (NumberFormatException e) {
+            return -1;
+        }
     }
 
     private static String hostOf(String url) {
@@ -855,6 +913,30 @@ public class MainActivity extends Activity {
     // the overlay
     // ------------------------------------------------------------------
 
+    /**
+     * 页面报错不等于网关死了：子资源 404、复制动作失败、WebView 的一次空导航
+     * 都会走到这里。先真的去连一次 Web UI 端口，连不上才盖错误页。
+     */
+    private void confirmGatewayDown() {
+        final String host = Prefs.browserHost(this);
+        final int port = GatewayService.webPort(this);
+        new Thread(() -> {
+            boolean up = false;
+            for (int i = 0; i < 6 && !up; i++) {
+                up = GatewayService.portOpen(host, port);
+                if (!up) {
+                    GatewayService.sleep(250);
+                }
+            }
+            final boolean alive = up;
+            ui.post(() -> {
+                if (!alive) {
+                    showStatus();
+                }
+            });
+        }, "magpie-check").start();
+    }
+
     private void showStatus() {
         loaded = false;
         statusTitle.setText(getString(GatewayService.isAlive()
@@ -899,13 +981,113 @@ public class MainActivity extends Activity {
         return sb.toString();
     }
 
+    /** 让系统手势别吃这块视图的触摸（API 29+，旧版本本来也没手势导航）。 */
+    private void excludeFromGestures(View v) {
+        if (Build.VERSION.SDK_INT < 29) {
+            return;
+        }
+        v.post(() -> {
+            java.util.List<android.graphics.Rect> rects = new java.util.ArrayList<>(1);
+            rects.add(new android.graphics.Rect(0, 0, v.getWidth(), v.getHeight()));
+            v.setSystemGestureExclusionRects(rects);
+        });
+    }
+
+    /**
+     * Marvis 登录在 Android 上没有能 spawn 的 Chromium：插件（打了补丁后）
+     * 会等 HOME/marvis-login-url.txt 出现，这里就是写它的地方 —— 用户在
+     * 浏览器里登录完，把地址栏那条回调 URL 贴进来。
+     */
+    private void showMarvisPaste() {
+        int[] c = M3.current(this);
+        int pad = dp(20);
+
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(pad, dp(4), pad, 0);
+
+        // 补丁状态就摆在输入框上面：插件在不在、版本、补丁有没有打上，
+        // 用户（和分享出去以后的别人）第一眼就能看出问题在哪。
+        TextView status = new TextView(this);
+        status.setTextSize(11.5f);
+        status.setText(GatewayService.patchStatus(this));
+        status.setTextColor(c[M3.ON_SURFACE_VARIANT]);
+        box.addView(status);
+
+        TextView help = new TextView(this);
+        help.setText(R.string.marvis_paste_help);
+        help.setTextSize(12.5f);
+        help.setTextColor(c[M3.ON_SURFACE]);
+        help.setPadding(0, dp(10), 0, 0);
+        box.addView(help);
+
+        final android.widget.EditText input = new android.widget.EditText(this);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(10);
+        input.setLayoutParams(lp);
+        input.setHint(R.string.marvis_paste_hint);
+        input.setTextSize(12.5f);
+        input.setMinLines(3);
+        input.setMaxLines(6);
+        input.setGravity(Gravity.TOP | Gravity.START);
+        GradientDrawable field = rounded(c[M3.SURFACE_CONTAINER_HIGHEST], 12);
+        field.setStroke(dp(1), c[M3.OUTLINE_VARIANT]);
+        input.setBackground(field);
+        input.setTextColor(c[M3.ON_SURFACE]);
+        input.setHintTextColor(c[M3.ON_SURFACE_VARIANT]);
+        int inPad = dp(12);
+        input.setPadding(inPad, inPad, inPad, inPad);
+        box.addView(input);
+
+        AlertDialog dlg = new AlertDialog.Builder(this)
+                .setTitle(R.string.marvis_paste_title)
+                .setView(box)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(R.string.marvis_paste_ok, null)
+                .create();
+        styleDialog(dlg);
+        dlg.show();
+        dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String url = input.getText().toString().trim();
+            if (!url.startsWith("http") || !url.contains("code=")) {
+                Toast.makeText(this, R.string.marvis_paste_bad, Toast.LENGTH_LONG).show();
+                return;
+            }
+            if (writeMarvisCallback(url)) {
+                dlg.dismiss();
+                Toast.makeText(this, R.string.marvis_paste_done, Toast.LENGTH_LONG).show();
+            } else {
+                Toast.makeText(this, R.string.marvis_paste_failed, Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
+    /** 把回调地址交给插件：写到 magpie 子进程的 HOME 下，插件读完即删。 */
+    private boolean writeMarvisCallback(String url) {
+        try {
+            java.io.File dir = GatewayService.homeDir(this);
+            if (!dir.isDirectory() && !dir.mkdirs()) {
+                return false;
+            }
+            java.io.File f = new java.io.File(dir, "marvis-login-url.txt");
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(f)) {
+                out.write(url.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+            return true;
+        } catch (Exception e) {
+            Log.w(TAG, "marvis callback write failed: " + e);
+            return false;
+        }
+    }
+
     private void showLog() {
         String tail = GatewayService.lastLog(0);
         if (tail == null || tail.isEmpty()) {
             tail = "(还没有输出)";
         }
         final String log = tail;
-        new AlertDialog.Builder(this)
+        AlertDialog logDialog = new AlertDialog.Builder(this)
                 .setTitle("magpie 日志（" + GatewayService.logFile(this).getAbsolutePath() + "）")
                 .setMessage(log)
                 .setNeutralButton("复制", (d, w) -> {
@@ -916,7 +1098,9 @@ public class MainActivity extends Activity {
                     }
                 })
                 .setPositiveButton("关闭", null)
-                .show();
+                .create();
+        styleDialog(logDialog);
+        logDialog.show();
     }
 
     private void openSettings() {
@@ -960,13 +1144,24 @@ public class MainActivity extends Activity {
                 getString(R.string.act_settings_sub), this::openSettings);
         addSheetItem(box, d, "\u21e9", getString(R.string.act_update),
                 getString(R.string.act_update_sub), this::openUpdate);
+        addSheetItem(box, d, "\u270e", getString(R.string.act_marvis_paste),
+                getString(R.string.act_marvis_paste_sub), this::showMarvisPaste);
         addSheetItem(box, d, "\u26a1", getString(R.string.act_battery),
                 getString(R.string.act_battery_sub), this::ignoreBattery);
         addSheetItem(box, d, "\u24d8", getString(R.string.act_about),
                 getString(R.string.act_about_sub), this::showAbout);
 
         LinearLayout sheetRoot = d.findViewById(R.id.sheet_root);
-        sheetRoot.setPadding(dp(18), dp(10), dp(18), dp(18) + barHeight("navigation_bar_height"));
+        int[] sc = M3.current(this);
+        GradientDrawable sheetBg = new GradientDrawable();
+        sheetBg.setColor(sc[M3.SURFACE_CONTAINER_LOW]);
+        float sr = dp(28);
+        sheetBg.setCornerRadii(new float[]{sr, sr, sr, sr, 0, 0, 0, 0});
+        sheetRoot.setBackground(sheetBg);
+        ((TextView) d.findViewById(R.id.sheet_title)).setTextColor(sc[M3.ON_SURFACE]);
+        d.findViewById(R.id.sheet_handle).setBackground(rounded(sc[M3.OUTLINE_VARIANT], 2));
+        sub.setTextColor(sc[M3.ON_SURFACE_VARIANT]);
+        sheetRoot.setPadding(dp(16), dp(10), dp(16), dp(16) + barHeight("navigation_bar_height"));
 
         Window w = d.getWindow();
         if (w != null) {
@@ -977,45 +1172,51 @@ public class MainActivity extends Activity {
         d.show();
     }
 
-    /** 一行：方块图标 + 标题 + 副标题，点下去先关弹层再做事。 */
+    /** M3 list item：56dp 高，44dp 圆角图标底（secondary container），两行文字。 */
     private void addSheetItem(LinearLayout box, final Dialog d, String icon,
                               String title, String sub, Runnable act) {
-        int accent = accentOf(this);
+        int[] c = M3.current(this);
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(0, dp(6), 0, dp(6));
+        row.setMinimumHeight(dp(56));
+        row.setPadding(dp(4), dp(6), dp(4), dp(6));
+        // 注意：android.R.attr.selectableItemBackground 是 attr 的 id，不是 drawable
+        // 的 id，直接塞给 setBackgroundResource 会抛 NotFoundException 把整个 Activity
+        // 带崩（点 ⋮ 闪退的根因）。要先在主题里解析出真正的 resourceId。
+        TypedValue ripple = new TypedValue();
+        if (getTheme().resolveAttribute(android.R.attr.selectableItemBackground, ripple, true)
+                && ripple.resourceId != 0) {
+            row.setBackgroundResource(ripple.resourceId);
+        }
 
         TextView ic = new TextView(this);
-        LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(dp(40), dp(40));
+        LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(dp(44), dp(44));
         ic.setLayoutParams(ip);
         ic.setGravity(Gravity.CENTER);
         ic.setText(icon);
         ic.setTextSize(18);
-        ic.setTextColor(accent != 0 ? mix(accent, Color.BLACK, 0.30f) : 0xFF7A5A4A);
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(accent != 0 ? mix(accent, Color.WHITE, 0.78f) : 0xFFF8EEE9);
-        bg.setCornerRadius(dp(14));
-        ic.setBackground(bg);
+        ic.setTextColor(c[M3.ON_SECONDARY_CONTAINER]);
+        ic.setBackground(rounded(c[M3.SECONDARY_CONTAINER], 14));
         row.addView(ic);
 
         LinearLayout texts = new LinearLayout(this);
         texts.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-        tp.leftMargin = dp(14);
+        tp.leftMargin = dp(16);
         texts.setLayoutParams(tp);
 
         TextView t = new TextView(this);
         t.setText(title);
-        t.setTextSize(17);
-        t.setTextColor(0xFF2A2320);
-        TextView s = new TextView(this);
-        s.setText(sub);
-        s.setTextSize(12.5f);
-        s.setTextColor(0xFF8B847F);
+        t.setTextSize(15);
+        t.setTextColor(c[M3.ON_SURFACE]);
+        TextView sb = new TextView(this);
+        sb.setText(sub);
+        sb.setTextSize(12);
+        sb.setTextColor(c[M3.ON_SURFACE_VARIANT]);
         texts.addView(t);
-        texts.addView(s);
+        texts.addView(sb);
         row.addView(texts);
 
         row.setOnClickListener(v -> {
@@ -1063,6 +1264,7 @@ public class MainActivity extends Activity {
      * 链接行直接可以点，点不开就把地址用 Toast 贴出来。
      */
     private void showAbout() {
+        int[] c = M3.current(this);
         View v = getLayoutInflater().inflate(R.layout.dialog_about, null);
         final TextView ver = v.findViewById(R.id.about_version);
         String shell = "";
@@ -1072,6 +1274,24 @@ public class MainActivity extends Activity {
         }
         final String shellVer = shell;
         ver.setText(getString(R.string.about_ver, shellVer, Prefs.installedVersion(this)));
+
+        ((TextView) v.findViewById(R.id.about_title)).setTextColor(c[M3.ON_SURFACE]);
+        ver.setTextColor(c[M3.ON_SURFACE_VARIANT]);
+        int[][] labels = {{R.id.about_upstream_label, M3.ON_SURFACE_VARIANT},
+                {R.id.about_author_label, M3.ON_SURFACE_VARIANT},
+                {R.id.about_license_text, M3.ON_SURFACE_VARIANT},
+                {R.id.about_ai, M3.ON_SURFACE_VARIANT},
+                {R.id.about_unofficial, M3.OUTLINE}};
+        for (int[] pair : labels) {
+            ((TextView) v.findViewById(pair[0])).setTextColor(c[pair[1]]);
+        }
+        int[][] links = {{R.id.about_repo, M3.PRIMARY},
+                {R.id.about_author_name, M3.PRIMARY},
+                {R.id.about_author_url, M3.ON_SURFACE_VARIANT},
+                {R.id.about_notice, M3.PRIMARY}};
+        for (int[] pair : links) {
+            ((TextView) v.findViewById(pair[0])).setTextColor(c[pair[1]]);
+        }
 
         // 内核版本要跑一下二进制，别卡着对话框
         new Thread(() -> {
@@ -1088,25 +1308,65 @@ public class MainActivity extends Activity {
         v.findViewById(R.id.about_author_url).setOnClickListener(x ->
                 openUrl("https://www.coolapk.com/u/1642567"));
         v.findViewById(R.id.about_notice).setOnClickListener(x -> {
-            try (java.io.InputStream in = getAssets().open("MAGPIE_LICENSE.txt");
-                 java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
-                byte[] buffer = new byte[4096];
-                int n;
-                while ((n = in.read(buffer)) != -1) out.write(buffer, 0, n);
-                new AlertDialog.Builder(this)
-                        .setTitle("magpie · MIT License")
-                        .setMessage(out.toString("UTF-8"))
-                        .setPositiveButton(android.R.string.ok, null)
-                        .show();
-            } catch (Exception e) {
-                Toast.makeText(this, "许可证读取失败", Toast.LENGTH_SHORT).show();
-            }
+            new Thread(() -> {
+                String text = "";
+                try (java.io.InputStream in = getAssets().open("MAGPIE_LICENSE.txt");
+                     java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+                    byte[] buffer = new byte[4096];
+                    int n;
+                    while ((n = in.read(buffer)) != -1) {
+                        out.write(buffer, 0, n);
+                    }
+                    text = out.toString("UTF-8");
+                } catch (Exception ignored) {
+                    text = "许可证读取失败";
+                }
+                final String body = text;
+                ui.post(() -> {
+                    AlertDialog dlg = new AlertDialog.Builder(this)
+                            .setTitle("magpie · MIT License")
+                            .setMessage(body)
+                            .setPositiveButton(android.R.string.ok, null)
+                            .create();
+                    styleDialog(dlg);
+                    dlg.show();
+                });
+            }, "magpie-license").start();
         });
 
-        new AlertDialog.Builder(this)
+        AlertDialog about = new AlertDialog.Builder(this)
                 .setView(v)
                 .setPositiveButton(android.R.string.ok, null)
-                .show();
+                .create();
+        styleDialog(about);
+        about.show();
+    }
+
+    /** 给系统 AlertDialog 换上 M3 的容器色，并把标题/正文/按钮刷成对应前景。 */
+    private void styleDialog(AlertDialog dlg) {
+        int[] c = M3.current(this);
+        dlg.setOnShowListener(x -> {
+            Window w = dlg.getWindow();
+            if (w != null) {
+                w.setBackgroundDrawable(rounded(c[M3.SURFACE_CONTAINER_HIGH], 28));
+            }
+            int alertTitleId = getResources().getIdentifier("alertTitle", "id", "android");
+            TextView title = alertTitleId > 0 ? dlg.findViewById(alertTitleId) : null;
+            if (title != null) {
+                title.setTextColor(c[M3.ON_SURFACE]);
+            }
+            TextView msg = dlg.findViewById(android.R.id.message);
+            if (msg != null) {
+                msg.setTextColor(c[M3.ON_SURFACE_VARIANT]);
+            }
+            for (int id : new int[]{AlertDialog.BUTTON_POSITIVE,
+                    AlertDialog.BUTTON_NEUTRAL, AlertDialog.BUTTON_NEGATIVE}) {
+                Button b = dlg.getButton(id);
+                if (b != null) {
+                    b.setTextColor(c[M3.PRIMARY]);
+                }
+            }
+        });
     }
 
     private void openUrl(String url) {
