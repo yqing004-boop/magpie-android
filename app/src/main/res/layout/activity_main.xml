@@ -76,7 +76,7 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <!-- 点一下复制 http://127.0.0.1:3425/v1（M3 assist chip） -->
+            <!-- 本机网关地址：点一下复制 http://127.0.0.1:3425/v1 -->
             <TextView
                 android:id="@+id/gw_pill"
                 android:layout_width="wrap_content"
@@ -84,24 +84,24 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
-                android:paddingStart="12dp"
-                android:paddingEnd="12dp"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
                 android:text="@string/header_gateway_placeholder"
                 android:textSize="12sp" />
 
-            <!-- 局域网共享：开了显示 Wi-Fi 地址，点开看局域网 URL 和密钥 -->
+            <!-- 小入口：不占 IP 地址宽度，点击才展示局域网地址和密钥 -->
             <TextView
                 android:id="@+id/lan_pill"
                 android:layout_width="wrap_content"
                 android:layout_height="32dp"
+                android:layout_marginStart="4dp"
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
-                android:paddingStart="10dp"
-                android:paddingEnd="10dp"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
                 android:text="@string/lan_pill_off"
-                android:textSize="12sp"
-                android:visibility="gone" />
+                android:textSize="12sp" />
 
             <TextView
                 android:id="@+id/menu"

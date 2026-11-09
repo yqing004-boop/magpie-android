@@ -116,9 +116,9 @@
     <string name="shell_update_failed">检查失败：%1$s</string>
     <string name="shell_update_go">去下载</string>
     <string name="lan_pill_off">局域网</string>
-    <string name="lan_pill_on">LAN %s</string>
+    <string name="lan_pill_on">局域网</string>
     <string name="lan_title">局域网共享</string>
-    <string name="lan_off_hint">还没开启局域网共享。开启后，同一 Wi-Fi 里的设备（别的手机、电脑上的 Agent）可以带上局域网密钥连这台手机的网关。</string>
+    <string name="lan_off_hint">先在壳的设置里开启「允许局域网访问」，再到 Magpie 网页 → 网关 → 局域网共享，选「开启」。完成后回到这里查看地址和密钥。</string>
     <string name="lan_on_hint">把下面的地址和密钥填进另一台设备的「添加供应商」里：Base URL 用地址，API Key 用密钥。</string>
     <string name="lan_addr_label">局域网地址</string>
     <string name="lan_addr_missing">没找到局域网地址（Wi-Fi 没连，或地址被 VPN 接管）</string>
@@ -126,8 +126,8 @@
     <string name="lan_key_missing">还没有局域网密钥。到 Magpie 网页 → 网关 → 局域网共享，点一次「开启」，magpie 会生成一个默认密钥；或者自己加一个网关密钥。</string>
     <string name="lan_copy_addr">复制地址</string>
     <string name="lan_copy_key">复制密钥</string>
-    <string name="lan_turn_on">开启局域网共享</string>
+    <string name="lan_turn_on">我知道了</string>
     <string name="lan_copied">已复制</string>
-    <string name="lan_opening">正在开启局域网共享并重启网关…</string>
+    <string name="lan_opening">请按提示在壳设置和 Magpie 网页里开启共享</string>
     <string name="lan_security">地址和密钥只在同一 Wi-Fi 内有效；别把它们发给不在这个网络里的人。</string>
 </resources>

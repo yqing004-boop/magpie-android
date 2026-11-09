@@ -163,12 +163,9 @@ public class MainActivity extends Activity {
         String host = Prefs.browserHost(this);
         gwPill.setText(host + ":" + GatewayService.gatewayPort(this));
         if (lanPill != null) {
-            // 按钮常显：开了共享显示 Wi-Fi 地址；没开显示"局域网"，点开给开启入口
+            // 入口始终只写「局域网」；地址、密钥都放在弹窗里，顶栏不被长 IP 撑大。
             lanPill.setVisibility(View.VISIBLE);
-            String ip = Prefs.lan(this) ? LanInfo.localIp() : "";
-            lanPill.setText(ip.isEmpty()
-                    ? getString(R.string.lan_pill_off)
-                    : getString(R.string.lan_pill_on, ip + ":" + GatewayService.gatewayPort(this)));
+            lanPill.setText(Prefs.lan(this) ? R.string.lan_pill_on : R.string.lan_pill_off);
         }
         boolean alive = GatewayService.isAlive();
         if (alive && loaded) {
@@ -1145,13 +1142,10 @@ public class MainActivity extends Activity {
                 Toast.makeText(this, R.string.lan_copied, Toast.LENGTH_SHORT).show();
                 return;
             }
-            // 没开共享：开壳的绑定开关，重启网关让 0.0.0.0 生效
-            Prefs.setLan(this, true);
+            // 不在这里悄悄改开关：用户需要先在壳的设置页开放监听，
+            // 再由 magpie 网页生成/启用默认密钥；弹窗只负责说明这两个步骤。
             dlg.dismiss();
             Toast.makeText(this, R.string.lan_opening, Toast.LENGTH_LONG).show();
-            GatewayService.restart(this);
-            loaded = false;
-            startGatewayAndWait();
         });
         if (!secret.isEmpty()) {
             dlg.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
