@@ -97,6 +97,10 @@ public class MainActivity extends Activity {
     private volatile ValueCallback<Uri[]> fileCallback;
     /** 重建 WebView 期间挡住重复回调，别一次死两个进程建出三个页面。 */
     private volatile boolean webRebuilding;
+    /** Activity 不可见后，按设置延迟释放 WebView；不碰 GatewayService。 */
+    private boolean appInBackground;
+    private boolean webReleased;
+    private final Runnable releaseWebTask = this::releaseWebForBackground;
 
     // ------------------------------------------------------------------
 
@@ -474,6 +478,12 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        appInBackground = false;
+        ui.removeCallbacks(releaseWebTask);
+        if (webReleased && web == null) {
+            rebuildWeb(false);
+            webReleased = false;
+        }
         // 从设置页回来可能换了背景/莫奈色，重画一遍
         applyTheme();
         String patchNote = GatewayService.takePatchNote();
@@ -500,6 +510,17 @@ public class MainActivity extends Activity {
         }
     };
 
+    /**
+     * 通知点击在 singleTask Activity 已存在时走这里，而不是再创建一个窗口。
+     * 只刷新壳状态；不重启网关、不重新 loadUrl，避免打断正在进行的页面操作。
+     */
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        refreshHeader();
+    }
+
     @Override
     protected void onPause() {
         super.onPause();
@@ -507,9 +528,24 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onStop() {
+        super.onStop();
+        appInBackground = true;
+        ui.removeCallbacks(releaseWebTask);
+        int minutes = Prefs.webReleaseMinutes(this);
+        if (minutes > 0 && !isChangingConfigurations()) {
+            long delay = minutes * 60_000L;
+            Log.i(TAG, "后台页面释放计时开始：" + minutes + " 分钟");
+            ui.postDelayed(releaseWebTask, delay);
+        }
+    }
+
+    @Override
     protected void onDestroy() {
-        super.onDestroy();
+        ui.removeCallbacks(releaseWebTask);
         ui.removeCallbacks(heartbeat);
+        ui.removeCallbacks(stateTicker);
+        super.onDestroy();
     }
 
     @Override
@@ -770,6 +806,26 @@ public class MainActivity extends Activity {
         if (saved != null && saved.containsKey("magpie_web_state")) {
             web.restoreState(saved);
         }
+    }
+
+    /**
+     * 到时只释放页面：不 stop/restart 服务、不碰 magpie ELF、不影响 3425 上的请求。
+     * 回到前台时 onResume 发现 web=null，再创建新的 WebView。
+     */
+    private void releaseWebForBackground() {
+        if (!appInBackground || web == null || webRebuilding || isChangingConfigurations()) {
+            return;
+        }
+        Log.i(TAG, "后台超时，释放 WebView；网关继续运行");
+        try {
+            ((ViewGroup) webCard).removeView(web);
+            web.setWebViewClient(null);
+            web.destroy();
+        } catch (Exception e) {
+            Log.w(TAG, "释放后台 WebView 失败", e);
+        }
+        web = null;
+        webReleased = true;
     }
 
     /** 内容区四角圆弧：容器与 WebView 各自带一个圆角 outline 再裁剪。 */

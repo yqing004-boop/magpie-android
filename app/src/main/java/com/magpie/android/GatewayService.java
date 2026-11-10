@@ -55,6 +55,8 @@ public class GatewayService extends Service {
 
     private static final String TAG = "MagpieGateway";
     private static final int NOTIF_ID = 9101;
+    /** 只有用户明确停止服务时才移除；运行/重试状态均保持前台通知常驻。 */
+    private static final int FOREGROUND_FLAGS = Notification.FLAG_ONGOING_EVENT;
     /** 前台通知最后一次展示的网关状态（null=未知），避免每次刷新都重发通知。 */
     private static volatile Boolean lastNotifAlive;
     private static final String CHANNEL_ID = "magpie_gateway";
@@ -170,14 +172,19 @@ public class GatewayService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        lastNotifAlive = null;
         startForeground(NOTIF_ID, notification(this, "Magpie", "正在启动网关…",
-                Notification.FLAG_ONGOING_EVENT));
+                FOREGROUND_FLAGS));
         if (intent != null && ACTION_RESTART.equals(intent.getAction())) {
             restart();
             return START_STICKY;
         }
         synchronized (LOCK) {
             if (process != null && process.isAlive()) {
+                // onStartCommand 每次都会先刷一次“正在启动网关…”。如果服务本来
+                // 已经在跑，这里必须立即纠正通知，否则 Activity 不打开时它会一直
+                // 停在启动文案。
+                syncNotification(this, true);
                 return START_STICKY;
             }
             if (starting) {
@@ -986,7 +993,8 @@ public class GatewayService extends Service {
     }
 
     private static Notification notification(Context ctx, String title, String body, int flags) {
-        Intent open = new Intent(ctx, MainActivity.class);
+        Intent open = new Intent(ctx, MainActivity.class)
+                .setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent pi = PendingIntent.getActivity(ctx, 1, open,
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         Notification.Builder b;
@@ -1010,7 +1018,7 @@ public class GatewayService extends Service {
         NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null) {
             nm.notify(NOTIF_ID, notification(ctx, "Magpie 已就绪",
-                    "网关 http://" + bindHost(ctx) + ":" + gatewayPort(ctx), 0));
+                    "网关 http://" + bindHost(ctx) + ":" + gatewayPort(ctx), FOREGROUND_FLAGS));
         }
     }
 
@@ -1018,8 +1026,8 @@ public class GatewayService extends Service {
         lastNotifAlive = false;
         NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null) {
-            nm.notify(NOTIF_ID, notification(ctx, "Magpie 已停止",
-                    code < 0 ? "网关进程结束" : "退出码 " + code, 0));
+            nm.notify(NOTIF_ID, notification(ctx, "Magpie 正在恢复网关",
+                    code < 0 ? "网关进程结束" : "上次退出码 " + code, FOREGROUND_FLAGS));
         }
     }
 
@@ -1043,13 +1051,14 @@ public class GatewayService extends Service {
             if (nm != null) {
                 nm.notify(NOTIF_ID, notification(ctx, "Magpie 运行中",
                         "网关 http://" + bindHost(ctx) + ":" + gatewayPort(ctx)
-                                + " · 局域网接口见顶栏", Notification.FLAG_ONGOING_EVENT));
+                                + " · 局域网接口见顶栏", FOREGROUND_FLAGS));
             }
         } else {
             lastNotifAlive = false;
             NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
             if (nm != null) {
-                nm.notify(NOTIF_ID, notification(ctx, "Magpie 已停止", "网关进程结束", 0));
+                nm.notify(NOTIF_ID, notification(ctx, "Magpie 正在确认网关状态",
+                        "网关进程未运行", FOREGROUND_FLAGS));
             }
         }
     }
