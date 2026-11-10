@@ -2,7 +2,7 @@
 
 > **非官方 Android 客户端 / Android APK。** 把 magpie 的本地 AI 网关装进手机：无需 Root、无需 Magisk、无需 Termux 或其他终端 App。
 >
-> 作者： [酷安 @图图没耳朵](https://www.coolapk.com/u/1642567)｜[酷安发布帖](https://www.coolapk.com/feed/74938122?s=ZjIxZmUyYjcxOTEwNDdnNmFmMWM1ZTd6a1665)｜项目由 AI 辅助开发与整理。
+> 作者： [酷安 @图图没耳朵](https://www.coolapk.com/u/1642567)｜[酷安发布帖](https://www.coolapk.com/feed/74938122?s=ZjIxZmUyYjcxOTEwNDdnNmFmMWM1ZTd6a1665)｜
 
 [![GitHub Release](https://img.shields.io/github/v/release/yqing004-boop/magpie-android?label=Release)](https://github.com/yqing004-boop/magpie-android/releases/latest)
 [![Android](https://img.shields.io/badge/Android-7.0%2B-3DDC84?logo=android&logoColor=white)](https://github.com/yqing004-boop/magpie-android/releases/latest)
