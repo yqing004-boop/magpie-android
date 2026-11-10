@@ -24,6 +24,8 @@ public final class Prefs {
     public static final String LAN = "lan";
     public static final String AUTOSTART = "autostart";
     public static final String UPDATE_FEED = "update_feed";
+    /** 更新渠道：true=稳定版（?channel=stable），false=每个版本。 */
+    public static final String STABLE_CHANNEL = "stable_channel";
     /** 后台多久后释放 WebView（分钟）；0 = 从不。 */
     public static final String WEB_RELEASE_MINUTES = "web_release_minutes";
     /** 后台运行检查卡被用户主动关闭过，别每次进设置都强提醒。 */
@@ -111,6 +113,14 @@ public final class Prefs {
 
     public static void setBackgroundGuideSeen(Context ctx, boolean seen) {
         sp(ctx).edit().putBoolean(BACKGROUND_GUIDE_SEEN, seen).apply();
+    }
+
+    public static boolean stableChannel(Context ctx) {
+        return sp(ctx).getBoolean(STABLE_CHANNEL, false);
+    }
+
+    public static void setStableChannel(Context ctx, boolean stable) {
+        sp(ctx).edit().putBoolean(STABLE_CHANNEL, stable).apply();
     }
 
     public static boolean autostart(Context ctx) {

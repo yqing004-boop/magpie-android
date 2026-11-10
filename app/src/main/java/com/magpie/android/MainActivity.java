@@ -339,6 +339,41 @@ public class MainActivity extends Activity {
             return; // 页面还没加载好，onPageFinished 里会再来一次
         }
         inject(pageCss(c));
+        injectNavReorder();
+    }
+
+    /**
+     * 手机底栏顺序：供应商 / 路由 / 用量 / 插件放底栏，其余（会话、资源库、
+     * 网关、脱敏、路由组…）进「更多」。
+     *
+     * <p>底栏由内核的 phonetabs.js 按 #nav 里 button 的文档顺序切成「前 4 个 +
+     * 更多」。壳不复制网页、不改内核，只把 button 按顺序重排，phonetabs 的
+     * MutationObserver 会自己重新分组。顺序固定，重复执行幂等，官方新增页面
+     * 若不在前 4 个里会自动落进「更多」。
+     */
+    private void injectNavReorder() {
+        String js = "(function(){"
+                + "function reorder(){"
+                + "var nav=document.getElementById('nav');"
+                + "if(!nav)return;"
+                + "var order=['providers','routing','usage','plugins'];"
+                + "var btns=Array.prototype.slice.call(nav.querySelectorAll(':scope > button[data-view]'));"
+                + "if(!btns.length)return;"
+                + "var byId={};"
+                + "btns.forEach(function(b){byId[b.getAttribute('data-view')]=b;});"
+                + "var rest=btns.filter(function(b){return order.indexOf(b.getAttribute('data-view'))<0;});"
+                + "var sorted=order.map(function(id){return byId[id];}).filter(Boolean).concat(rest);"
+                + "var more=nav.querySelector('.nav-more');"
+                + "sorted.forEach(function(b){if(more){nav.insertBefore(b,more);}else{nav.appendChild(b);}});"
+                + "}"
+                + "if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',reorder);}else{reorder();}"
+                + "setTimeout(reorder,200);setTimeout(reorder,800);setTimeout(reorder,2000);"
+                + "})();";
+        try {
+            web.evaluateJavascript(js, null);
+        } catch (Exception e) {
+            Log.w(TAG, "重排底栏失败: " + e);
+        }
     }
 
     /**
@@ -369,7 +404,12 @@ public class MainActivity extends Activity {
                 // 半透明毛玻璃铺底，滚动中会和卡片文字叠在一起看不清。改成 static，
                 // 让它们跟着内容滚走；撑底的 ::before 一并去掉，否则绝对定位会乱飘。
                 + ".lib-head,.pm-manual{position:static!important}"
-                + ".lib-head::before,.pm-manual::before{display:none!important}";
+                + ".lib-head::before,.pm-manual::before{display:none!important}"
+                // 手机底栏（magpie web 的 tab bar）：每个 tab 做成胶囊，
+                // 选中项用主题色胶囊底，一眼看出停留在哪个页面
+                + "body.web:not(.panel) .top #nav > button{border-radius:16px!important;height:42px!important;margin:4px 3px!important;padding:2px 4px!important}"
+                + "body.web:not(.panel) .top #nav > button.on,"
+                + "body.web:not(.panel) .top #nav > .nav-more.on{background:var(--pill)!important;color:var(--fg)!important}";
     }
 
     private static String hex(int c) {

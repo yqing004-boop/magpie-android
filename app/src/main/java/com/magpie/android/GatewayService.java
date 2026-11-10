@@ -544,8 +544,15 @@ public class GatewayService extends Service {
 
     private static final String ASSET = "bin/magpie.bin";
 
-    /** Extracts assets/bin/magpie.bin to filesDir/magpie/magpie if it is
-     *  missing or was replaced by a newer build of the app. */
+    /**
+     * 把 assets 里的内核释放到 filesDir/magpie/magpie。
+     *
+     * <p>**绝不覆盖已安装内核**：只要 files/magpie/magpie 存在且是有效 ELF，
+     * 就直接用，不论 APK 是否升级过。这样用户在 App 里「检查更新」拉到的
+     * 新版永远不会被旧壳重新覆盖（之前按 APK 的 lastUpdateTime 判断，装新版
+     * APK 会把用户更新的内核退回旧版）。assets 只是首次安装/内核丢失或损坏时
+     * 的种子。
+     */
     static File ensureBinary(Context ctx) throws IOException {
         File root = rootDir(ctx);
         if (!root.isDirectory() && !root.mkdirs()) {
@@ -569,19 +576,8 @@ public class GatewayService extends Service {
         }
 
         File dst = binary(ctx);
-        SharedPreferences sp = ctx.getSharedPreferences("magpie_prefs", Context.MODE_PRIVATE);
-
-        // APK 本身升级过（装了新版 App）→ assets 里的二进制才是权威的，
-        // 清掉大小记录让它重新释放。没升级过就别动：这个文件可能是用户
-        // 在 App 里从 GitHub 拉到的新版，比 assets 里的新，冲掉就白更新了。
-        long stamp = appStamp(ctx);
-        if (stamp > 0 && sp.getLong("assets_stamp", -1) != stamp) {
-            sp.edit().putLong("assets_stamp", stamp).remove("bin_size").apply();
-        }
-
-        long want = sp.getLong("bin_size", -1);
-
-        if (dst.exists() && want > 0 && dst.length() == want && looksLikeElf(dst)) {
+        // 已安装的内核存在且能认出来是 ELF 就直接用，不覆盖。
+        if (dst.exists() && dst.length() >= 4 && looksLikeElf(dst)) {
             return dst;
         }
 
@@ -608,20 +604,10 @@ public class GatewayService extends Service {
         dst.setReadable(true, false);
         dst.setWritable(true, false);
         dst.setExecutable(true, false);
-        sp.edit().putLong("bin_size", n).apply();
-        appendLog("已从 APK 释放 magpie 二进制：" + dst + "（" + n + " 字节）");
+        appendLog("已从 APK 释放 magpie 二进制（首次/丢失恢复）：" + dst + "（" + n + " 字节）");
         return dst;
     }
 
-    /** App 自己的安装/更新时间；升级过一次就变了，拿它当 assets 的新鲜度标记。 */
-    private static long appStamp(Context ctx) {
-        try {
-            return ctx.getPackageManager()
-                    .getPackageInfo(ctx.getPackageName(), 0).lastUpdateTime;
-        } catch (Exception e) {
-            return 0;
-        }
-    }
 
     private static boolean looksLikeElf(File f) {
         if (f == null || !f.exists() || f.length() < 4) {

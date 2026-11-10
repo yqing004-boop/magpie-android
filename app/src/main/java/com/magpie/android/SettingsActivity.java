@@ -41,6 +41,7 @@ public class SettingsActivity extends Activity {
     private Switch lan;
     private EditText feed;
     private Switch monet;
+    private Switch stableChannel;
     private LinearLayout seedBar;
     private RadioGroup webReleaseGroup;
     private RadioButton webReleaseNever;
@@ -88,6 +89,8 @@ public class SettingsActivity extends Activity {
         lan.setOnCheckedChangeListener((button, checked) -> Prefs.setLan(SettingsActivity.this, checked));
 
         feed.setText(Prefs.updateFeed(this));
+        stableChannel = findViewById(R.id.stable_channel);
+        stableChannel.setChecked(Prefs.stableChannel(this));
         final String beforeNetwork = Prefs.port(this) + "|" + Prefs.lan(this) + "|"
                 + Prefs.updateFeed(this);
 
@@ -114,6 +117,7 @@ public class SettingsActivity extends Activity {
             }
             Prefs.setPort(SettingsActivity.this, port.getText().toString());
             Prefs.setUpdateFeed(SettingsActivity.this, feed.getText().toString());
+            Prefs.setStableChannel(SettingsActivity.this, stableChannel.isChecked());
             // 只有端口 / 局域网 / 更新源变了才需要重启网关；换个主题色不该
             // 把 agent 的连接掐断
             String now = Prefs.port(SettingsActivity.this) + "|" + Prefs.lan(SettingsActivity.this)
@@ -297,7 +301,8 @@ public class SettingsActivity extends Activity {
             ((TextView) findViewById(id)).setTextColor(c[M3.ON_SURFACE]);
         }
         int[] hints = {R.id.hint_port, R.id.hint_lan, R.id.hint_web_memory,
-                R.id.hint_background_guide, R.id.monet_hint, R.id.hint_seed};
+                R.id.hint_background_guide, R.id.hint_stable_channel,
+                R.id.monet_hint, R.id.hint_seed};
         for (int id : hints) {
             ((TextView) findViewById(id)).setTextColor(c[M3.ON_SURFACE_VARIANT]);
         }
@@ -307,6 +312,8 @@ public class SettingsActivity extends Activity {
         field(webReleaseCustomMinutes);
         tintSwitch(lan);
         tintSwitch(monet);
+        tintSwitch(stableChannel);
+        ((Switch) stableChannel).setTextColor(c[M3.ON_SURFACE]);
         tintRadio(webReleaseNever);
         tintRadio(webRelease15);
         tintRadio(webRelease30);

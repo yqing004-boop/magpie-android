@@ -160,4 +160,6 @@
     <string name="background_guide_never">不再提示</string>
     <string name="background_guide_done">完成</string>
     <string name="settings_open_background_guide">打开后台运行引导</string>
+    <string name="settings_stable_channel">稳定版更新渠道</string>
+    <string name="settings_stable_channel_hint">开启：只推送发布满三天后的稳定版；关闭：每个版本都推送（含紧急修复）。只影响 magpie 内核的检查更新，自定义更新源不受影响。</string>
 </resources>

@@ -231,6 +231,10 @@ public final class Updater {
         if (custom != null && custom.trim().length() > 0) {
             return custom.trim();
         }
+        // 稳定版：发布满三天后才推送的版本；每个版本：最新（含紧急修复）
+        if (Prefs.stableChannel(ctx)) {
+            return DEFAULT_FEED + "?channel=stable";
+        }
         return DEFAULT_FEED;
     }
 
