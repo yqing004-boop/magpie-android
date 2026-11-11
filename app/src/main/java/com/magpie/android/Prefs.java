@@ -50,6 +50,8 @@ public final class Prefs {
     public static final String SHELL_MIRROR = "shell_mirror";
     /** 壳更新：用户手动添加的镜像前缀列表。 */
     public static final String SHELL_CUSTOM_MIRRORS = "shell_custom_mirrors";
+    /** 壳导入的本地插件文件夹名清单（下次导入时清已移除的残留）。 */
+    public static final String IMPORTED_PLUGINS = "imported_plugins";
 
     public static final String DEFAULT_HOST = "127.0.0.1";
     public static final int DEFAULT_PORT = 3425;
@@ -230,6 +232,23 @@ public final class Prefs {
         Set<String> s = new HashSet<>(shellCustomMirrors(ctx));
         s.remove(prefix);
         sp(ctx).edit().putStringSet(SHELL_CUSTOM_MIRRORS, s).apply();
+    }
+
+    /** 壳导入过的本地插件文件夹名。 */
+    public static Set<String> importedPlugins(Context ctx) {
+        return sp(ctx).getStringSet(IMPORTED_PLUGINS, new HashSet<String>());
+    }
+
+    public static void addImportedPlugin(Context ctx, String name) {
+        Set<String> s = new HashSet<>(importedPlugins(ctx));
+        s.add(name);
+        sp(ctx).edit().putStringSet(IMPORTED_PLUGINS, s).apply();
+    }
+
+    public static void removeImportedPlugin(Context ctx, String name) {
+        Set<String> s = new HashSet<>(importedPlugins(ctx));
+        s.remove(name);
+        sp(ctx).edit().putStringSet(IMPORTED_PLUGINS, s).apply();
     }
 
     /** 是否已经把 magpie 自带的自动更新关掉（只做一次）。 */

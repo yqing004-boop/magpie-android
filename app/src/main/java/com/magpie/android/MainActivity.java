@@ -11,6 +11,8 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
+import android.database.Cursor;
+import android.provider.DocumentsContract;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.Window;
@@ -49,12 +51,16 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -72,6 +78,8 @@ public class MainActivity extends Activity {
     private static final int REQ_SETTINGS = 1;
     private static final int REQ_FILE = 2;
     private static final int REQ_UPDATE = 3;
+    /** 导入本地插件：SAF 选文件夹。 */
+    private static final int REQ_PLUGIN_DIR = 4;
     /** 自动查更新的间隔：一天问一次就够了，别每次开 App 都跑流量。 */
     private static final long AUTO_CHECK_EVERY = 24L * 60 * 60 * 1000;
 
@@ -628,6 +636,10 @@ public class MainActivity extends Activity {
             if (cb != null) {
                 cb.onReceiveValue(data != null && data.getData() != null
                         ? new Uri[]{data.getData()} : null);
+            }
+        } else if (requestCode == REQ_PLUGIN_DIR) {
+            if (resultCode == RESULT_OK && data != null && data.getData() != null) {
+                confirmPluginImport(data.getData());
             }
         }
     }
@@ -1457,6 +1469,8 @@ public class MainActivity extends Activity {
                 getString(R.string.act_shell_update_sub), this::checkShellUpdate);
         addSheetItem(box, d, "\u270e", getString(R.string.act_marvis_paste),
                 getString(R.string.act_marvis_paste_sub), this::showMarvisPaste);
+        addSheetItem(box, d, "\u2913", getString(R.string.act_import_plugin),
+                getString(R.string.act_import_plugin_sub), this::importPlugin);
         addSheetItem(box, d, "\u26a1", getString(R.string.act_battery),
                 getString(R.string.act_battery_sub), this::ignoreBattery);
         addSheetItem(box, d, "\u24d8", getString(R.string.act_about),
@@ -1957,5 +1971,500 @@ public class MainActivity extends Activity {
         } finally {
             c.disconnect();
         }
+    }
+
+    // ------------------------------------------------------------------
+    // 导入本地插件：SAF 选文件夹 → 拷进沙箱 → 调 magpie API 加载
+    // ------------------------------------------------------------------
+
+    /** 菜单里的「导入本地插件」：弹系统文件夹选择器。 */
+    private void importPlugin() {
+        try {
+            Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivityForResult(i, REQ_PLUGIN_DIR);
+        } catch (Exception e) {
+            Toast.makeText(this, getString(R.string.plugin_import_failed, "打不开文件夹选择器"),
+                    Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /** 选中文件夹后：列出里面所有项（文件/子文件夹），勾选要导入的插件。 */
+    private void confirmPluginImport(Uri tree) {
+        String rootId = DocumentsContract.getTreeDocumentId(tree);
+        Uri childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(tree, rootId);
+        final List<String> names = new ArrayList<>();
+        final List<String> ids = new ArrayList<>();
+        final List<Boolean> dirs = new ArrayList<>();
+        Cursor c = getContentResolver().query(childrenUri,
+                new String[]{DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                        DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                        DocumentsContract.Document.COLUMN_MIME_TYPE},
+                null, null, null);
+        if (c != null) {
+            try {
+                while (c.moveToNext()) {
+                    names.add(c.getString(1));
+                    ids.add(c.getString(0));
+                    dirs.add(DocumentsContract.Document.MIME_TYPE_DIR.equals(c.getString(2)));
+                }
+            } finally {
+                c.close();
+            }
+        }
+        if (names.isEmpty()) {
+            // 空文件夹：直接确认导入文件夹本身
+            confirmSingle(tree, rootId, folderNameOf(tree, rootId), true);
+            return;
+        }
+        final String[] items = names.toArray(new String[0]);
+        final boolean[] checked = new boolean[items.length];
+        AlertDialog dlg = new AlertDialog.Builder(this)
+                .setTitle(R.string.plugin_pick_title)
+                .setMultiChoiceItems(items, checked, (d, which, isChecked) -> checked[which] = isChecked)
+                .setPositiveButton(R.string.plugin_import_selected, (d, w) -> {
+                    List<String> sn = new ArrayList<>();
+                    List<String> si = new ArrayList<>();
+                    List<Boolean> sd = new ArrayList<>();
+                    for (int i = 0; i < items.length; i++) {
+                        if (checked[i]) {
+                            sn.add(names.get(i));
+                            si.add(ids.get(i));
+                            sd.add(dirs.get(i));
+                        }
+                    }
+                    if (sn.isEmpty()) {
+                        Toast.makeText(this, R.string.plugin_none_selected, Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    importSelected(tree, si, sn, sd);
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .create();
+        styleDialog(dlg);
+        dlg.show();
+    }
+
+    private String folderNameOf(Uri tree, String docId) {
+        String name = null;
+        Uri docUri = DocumentsContract.buildDocumentUriUsingTree(tree, docId);
+        Cursor nc = getContentResolver().query(docUri,
+                new String[]{DocumentsContract.Document.COLUMN_DISPLAY_NAME}, null, null, null);
+        if (nc != null) {
+            try {
+                if (nc.moveToFirst()) {
+                    name = nc.getString(0);
+                }
+            } finally {
+                nc.close();
+            }
+        }
+        if (name == null || name.trim().isEmpty()) {
+            name = docId.substring(docId.lastIndexOf('/') + 1);
+        }
+        return name;
+    }
+
+    /** 空文件夹时：确认导入文件夹本身。 */
+    private void confirmSingle(Uri tree, String childId, String name, boolean dir) {
+        AlertDialog dlg = new AlertDialog.Builder(this)
+                .setTitle(R.string.plugin_confirm_title)
+                .setMessage(getString(R.string.plugin_confirm_msg, name))
+                .setPositiveButton(R.string.plugin_confirm_ok, (d, w) -> importSelected(tree,
+                        new ArrayList<>(java.util.Collections.singletonList(childId)),
+                        new ArrayList<>(java.util.Collections.singletonList(name)),
+                        new ArrayList<>(java.util.Collections.singletonList(dir))))
+                .setNegativeButton(android.R.string.cancel, null)
+                .create();
+        styleDialog(dlg);
+        dlg.show();
+    }
+
+    /** 批量导入勾选的插件（文件或目录）。 */
+    private void importSelected(Uri tree, List<String> ids, List<String> names, List<Boolean> dirs) {
+        final ProgressDialog pd = new ProgressDialog(this);
+        pd.setMessage(getString(R.string.plugin_importing));
+        pd.setIndeterminate(true);
+        pd.setCancelable(false);
+        pd.show();
+        new Thread(() -> {
+            try {
+                cleanRemovedPlugins();
+                File pluginsDir = new File(GatewayService.dataDir(this), "plugins-local");
+                if (!pluginsDir.isDirectory() && !pluginsDir.mkdirs()) {
+                    throw new IOException("无法创建插件目录");
+                }
+                int ok = 0;
+                final StringBuilder errs = new StringBuilder();
+                for (int i = 0; i < ids.size(); i++) {
+                    try {
+                        importOne(tree, ids.get(i), names.get(i), dirs.get(i), pluginsDir);
+                        ok++;
+                    } catch (Exception e) {
+                        errs.append(names.get(i)).append(": ")
+                                .append(e.getMessage() == null ? e.toString() : e.getMessage())
+                                .append('\n');
+                    }
+                }
+                final int fok = ok;
+                final String ferrs = errs.toString().trim();
+                ui.post(() -> {
+                    pd.dismiss();
+                    if (ferrs.isEmpty()) {
+                        Toast.makeText(this, getString(R.string.plugin_import_ok_count, fok),
+                                Toast.LENGTH_LONG).show();
+                    } else {
+                        Toast.makeText(this,
+                                getString(R.string.plugin_import_partial, fok, ferrs),
+                                Toast.LENGTH_LONG).show();
+                    }
+                });
+            } catch (Exception e) {
+                Log.w(TAG, "导入插件失败: " + e);
+                final String msg = e.getMessage() == null ? e.toString() : e.getMessage();
+                ui.post(() -> {
+                    pd.dismiss();
+                    Toast.makeText(this, getString(R.string.plugin_import_failed, msg),
+                            Toast.LENGTH_LONG).show();
+                });
+            }
+        }, "magpie-plugin-import").start();
+    }
+
+    /** 导入单个插件：目录递归拷贝，文件直接拷；tar.gz/tgz 先解压再交给 magpie。 */
+    private void importOne(Uri tree, String childId, String rawName, boolean dir, File pluginsDir)
+            throws IOException {
+        final String name = sanitize(rawName);
+        String spec;
+        if (dir) {
+            File dst = new File(pluginsDir, name);
+            if (dst.exists()) {
+                deleteRecursive(dst);
+            }
+            if (!dst.mkdirs()) {
+                throw new IOException("无法创建 " + name);
+            }
+            copyTree(tree, childId, dst);
+            spec = dst.getAbsolutePath();
+        } else {
+            File dst = new File(pluginsDir, name);
+            if (dst.exists()) {
+                dst.delete();
+            }
+            copyFile(DocumentsContract.buildDocumentUriUsingTree(tree, childId), dst);
+            if (name.endsWith(".tar.gz") || name.endsWith(".tgz") || name.endsWith(".zip")) {
+                String dirName = name.replaceFirst("\\.(tar\\.gz|tgz|zip)$", "");
+                File exDir = new File(pluginsDir, dirName);
+                if (exDir.exists()) {
+                    deleteRecursive(exDir);
+                }
+                if (!exDir.mkdirs()) {
+                    throw new IOException("无法创建 " + dirName);
+                }
+                if (name.endsWith(".zip")) {
+                    unzip(dst, exDir);
+                } else {
+                    untar(dst, exDir);
+                }
+                dst.delete();
+                spec = exDir.getAbsolutePath();
+            } else {
+                spec = dst.getAbsolutePath();
+            }
+        }
+        String err = postPluginAdd(spec);
+        if (err != null) {
+            throw new IOException(err);
+        }
+        Prefs.addImportedPlugin(this, name);
+    }
+
+    /** 解压 zip 到 destDir（流式，防路径穿越）。 */
+    private static void unzip(File zip, File destDir) throws IOException {
+        try (InputStream fin = new FileInputStream(zip);
+             java.util.zip.ZipInputStream zin = new java.util.zip.ZipInputStream(fin)) {
+            byte[] buf = new byte[8192];
+            java.util.zip.ZipEntry e;
+            while ((e = zin.getNextEntry()) != null) {
+                String name = e.getName();
+                name = name.replace('\\', '/');
+                while (name.startsWith("/")) {
+                    name = name.substring(1);
+                }
+                if (name.isEmpty() || name.contains("..")) {
+                    zin.closeEntry();
+                    continue;
+                }
+                File out = new File(destDir, name);
+                if (e.isDirectory()) {
+                    if (!out.isDirectory()) {
+                        out.mkdirs();
+                    }
+                    zin.closeEntry();
+                    continue;
+                }
+                File parent = out.getParentFile();
+                if (parent != null && !parent.isDirectory()) {
+                    parent.mkdirs();
+                }
+                try (FileOutputStream fo = new FileOutputStream(out)) {
+                    int n;
+                    while ((n = zin.read(buf)) != -1) {
+                        fo.write(buf, 0, n);
+                    }
+                }
+                zin.closeEntry();
+            }
+        }
+    }
+
+    /** 解压 tar.gz 到 destDir（仅普通文件和目录，支持长路径名）。 */
+    private static void untar(File tarGz, File destDir) throws IOException {
+        try (InputStream fin = new FileInputStream(tarGz);
+             java.util.zip.GZIPInputStream gz = new java.util.zip.GZIPInputStream(fin)) {
+            byte[] buf = new byte[8192];
+            byte[] header = new byte[512];
+            while (true) {
+                int off = 0;
+                int n;
+                while (off < 512) {
+                    n = gz.read(header, off, 512 - off);
+                    if (n < 0) {
+                        return;
+                    }
+                    off += n;
+                }
+                boolean allZero = true;
+                for (byte b : header) {
+                    if (b != 0) {
+                        allZero = false;
+                        break;
+                    }
+                }
+                if (allZero) {
+                    return;
+                }
+                String name = new String(header, 0, 100, java.nio.charset.StandardCharsets.UTF_8).trim();
+                long size = 0;
+                String sizeStr = new String(header, 124, 12, java.nio.charset.StandardCharsets.UTF_8).trim();
+                try {
+                    size = Long.parseLong(sizeStr, 8);
+                } catch (Exception ignored) {
+                    size = 0;
+                }
+                char type = (char) header[156];
+                if (name.isEmpty()) {
+                    continue;
+                }
+                name = name.replaceFirst("^\\./", "");
+                if (name.startsWith("/")) {
+                    name = name.substring(1);
+                }
+                File out = new File(destDir, name);
+                if (type == '5') {
+                    if (!out.isDirectory()) {
+                        out.mkdirs();
+                    }
+                } else {
+                    File parent = out.getParentFile();
+                    if (parent != null && !parent.isDirectory()) {
+                        parent.mkdirs();
+                    }
+                    try (FileOutputStream fo = new FileOutputStream(out)) {
+                        long remaining = size;
+                        while (remaining > 0) {
+                            int want = (int) Math.min((long) buf.length, remaining);
+                            n = gz.read(buf, 0, want);
+                            if (n < 0) {
+                                break;
+                            }
+                            fo.write(buf, 0, n);
+                            remaining -= n;
+                        }
+                    }
+                }
+                long pad = (512 - (size % 512)) % 512;
+                while (pad > 0) {
+                    int want = (int) Math.min((long) buf.length, pad);
+                    n = gz.read(buf, 0, want);
+                    if (n < 0) {
+                        return;
+                    }
+                    pad -= n;
+                }
+            }
+        }
+    }
+
+    /** 清残留：magpie 已移除的导入插件，把沙箱副本删掉。 */
+    private void cleanRemovedPlugins() {
+        File dir = new File(GatewayService.dataDir(this), "plugins-local");
+        if (!dir.isDirectory()) {
+            return;
+        }
+        Set<String> imported = Prefs.importedPlugins(this);
+        if (imported.isEmpty()) {
+            return;
+        }
+        String list = fetchPluginListText();
+        if (list == null) {
+            return; // 查不到就别清，避免误删
+        }
+        for (String name : new HashSet<>(imported)) {
+            if (!list.contains("plugins-local/" + name)) {
+                deleteRecursive(new File(dir, name));
+                Prefs.removeImportedPlugin(this, name);
+            }
+        }
+    }
+
+    /** 调 magpie 的 GET /api/plugins，把返回 JSON 文本整个拿回来。 */
+    private String fetchPluginListText() {
+        try {
+            String url = "http://" + Prefs.browserHost(this) + ":"
+                    + GatewayService.webPort(this) + "/api/plugins";
+            HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+            c.setRequestProperty("Cookie", webCookie());
+            c.setConnectTimeout(8_000);
+            c.setReadTimeout(15_000);
+            try {
+                if (c.getResponseCode() != 200) {
+                    return null;
+                }
+                StringBuilder sb = new StringBuilder();
+                try (InputStream in = c.getInputStream();
+                     java.io.BufferedReader r = new java.io.BufferedReader(
+                             new java.io.InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8))) {
+                    char[] buf = new char[4096];
+                    int n;
+                    while ((n = r.read(buf)) != -1) {
+                        sb.append(buf, 0, n);
+                    }
+                }
+                return sb.toString();
+            } finally {
+                c.disconnect();
+            }
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** 递归把 SAF 目录树拷到本地。 */
+    private void copyTree(Uri treeUri, String docId, File dstDir) throws IOException {
+        Uri childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId);
+        Cursor c = getContentResolver().query(childrenUri,
+                new String[]{DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                        DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                        DocumentsContract.Document.COLUMN_MIME_TYPE},
+                null, null, null);
+        if (c == null) {
+            return;
+        }
+        try {
+            while (c.moveToNext()) {
+                String childId = c.getString(0);
+                String name = c.getString(1);
+                String mime = c.getString(2);
+                Uri childUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childId);
+                if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
+                    File sub = new File(dstDir, sanitize(name));
+                    if (!sub.isDirectory() && !sub.mkdirs()) {
+                        throw new IOException("mkdir fail: " + name);
+                    }
+                    copyTree(treeUri, childId, sub);
+                } else {
+                    copyFile(childUri, new File(dstDir, sanitize(name)));
+                }
+            }
+        } finally {
+            c.close();
+        }
+    }
+
+    private void copyFile(Uri src, File dst) throws IOException {
+        try (InputStream in = getContentResolver().openInputStream(src);
+             FileOutputStream out = new FileOutputStream(dst)) {
+            byte[] buf = new byte[1 << 16];
+            int n;
+            while ((n = in.read(buf)) != -1) {
+                out.write(buf, 0, n);
+            }
+            out.flush();
+        }
+    }
+
+    /** 调 magpie 的 POST /api/plugins/add，spec=沙箱绝对路径。返回 null 成功，否则错误文案。 */
+    private String postPluginAdd(String spec) {
+        try {
+            String url = "http://" + Prefs.browserHost(this) + ":"
+                    + GatewayService.webPort(this) + "/api/plugins/add";
+            String body = "{\"spec\":\"" + jsonEscape(spec) + "\"}";
+            HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+            c.setRequestMethod("POST");
+            c.setRequestProperty("Cookie", webCookie());
+            c.setRequestProperty("Content-Type", "application/json");
+            c.setDoOutput(true);
+            c.setConnectTimeout(8_000);
+            c.setReadTimeout(120_000);
+            try {
+                try (OutputStream out = c.getOutputStream()) {
+                    out.write(body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                }
+                int code = c.getResponseCode();
+                if (code != 200) {
+                    return "magpie 返回 " + code;
+                }
+                return null;
+            } finally {
+                c.disconnect();
+            }
+        } catch (Exception e) {
+            return e.getMessage() == null ? e.toString() : e.getMessage();
+        }
+    }
+
+    /** magpie Web UI 的鉴权 cookie：magpie_web_<端口>=<webKey>。 */
+    private String webCookie() {
+        return "magpie_web_" + GatewayService.webPort(this) + "=" + Prefs.webKey(this);
+    }
+
+    private static String jsonEscape(String s) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            char ch = s.charAt(i);
+            if (ch == '\\' || ch == '"') {
+                sb.append('\\').append(ch);
+            } else if (ch < 0x20) {
+                sb.append(String.format("\\u%04x", (int) ch));
+            } else {
+                sb.append(ch);
+            }
+        }
+        return sb.toString();
+    }
+
+    private static String sanitize(String name) {
+        String s = name == null ? "" : name.trim();
+        s = s.replaceAll("[\\\\/:*?\"<>|]", "_");
+        if (s.isEmpty() || s.equals(".") || s.equals("..")) {
+            s = "plugin";
+        }
+        return s;
+    }
+
+    private static void deleteRecursive(File f) {
+        if (f == null || !f.exists()) {
+            return;
+        }
+        if (f.isDirectory()) {
+            File[] children = f.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    deleteRecursive(child);
+                }
+            }
+        }
+        f.delete();
     }
 }

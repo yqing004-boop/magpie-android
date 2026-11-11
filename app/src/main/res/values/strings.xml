@@ -103,6 +103,19 @@
     <string name="update_working">正在更新，别切走太久…</string>
     <string name="act_marvis_paste">粘贴 Marvis 授权回调</string>
     <string name="act_marvis_paste_sub">浏览器里登录完，把地址栏整条 URL 贴进来</string>
+    <string name="act_import_plugin">导入本地插件</string>
+    <string name="act_import_plugin_sub">从手机存储选一个插件文件夹，拷进沙箱并交给 magpie 加载</string>
+    <string name="plugin_importing">正在导入插件…</string>
+    <string name="plugin_import_ok">插件 %1$s 已导入并加载</string>
+    <string name="plugin_import_failed">导入失败：%1$s</string>
+    <string name="plugin_confirm_title">导入本地插件</string>
+    <string name="plugin_confirm_msg">要导入文件夹「%1$s」吗？导入后会拷进 App 沙箱并交给 magpie 加载。</string>
+    <string name="plugin_confirm_ok">导入</string>
+    <string name="plugin_pick_title">选择要导入的插件</string>
+    <string name="plugin_import_selected">导入勾选的插件</string>
+    <string name="plugin_none_selected">请先勾选要导入的插件</string>
+    <string name="plugin_import_ok_count">已导入 %1$d 个插件</string>
+    <string name="plugin_import_partial">成功 %1$d 个：\n%2$s</string>
     <string name="marvis_paste_title">粘贴 Marvis 授权回调</string>
     <string name="marvis_paste_help">先在浏览器里完成 QQ 授权，页面跳转后复制地址栏里整条以 https://yybadaccess.3g.qq.com/marvis_client_login/marvis_oauth 开头的 URL（必须带 code=）</string>
     <string name="marvis_paste_hint">https://yybadaccess.3g.qq.com/marvis_client_login/marvis_oauth?login_type=QC&amp;code=…</string>
