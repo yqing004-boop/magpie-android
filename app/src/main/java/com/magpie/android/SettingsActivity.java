@@ -23,6 +23,9 @@ import android.widget.RadioButton;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * The three things worth touching on a phone: which port the gateway listens
  * on, whether it is reachable from other devices on the same Wi-Fi, and
@@ -43,6 +46,8 @@ public class SettingsActivity extends Activity {
     private Switch monet;
     private Switch stableChannel;
     private LinearLayout seedBar;
+    private Switch shellAutoCheck;
+    private TextView shellMirrorValue;
     private RadioGroup webReleaseGroup;
     private RadioButton webReleaseNever;
     private RadioButton webRelease15;
@@ -138,6 +143,19 @@ public class SettingsActivity extends Activity {
         // 壳自己的更新：查 GitHub Release，只提示 + 跳页，不碰 APK 安装
         Button checkShell = findViewById(R.id.check_shell);
         checkShell.setOnClickListener(v -> checkShellUpdate());
+
+        // App 自更新：自动检查开关 + 下载镜像选择 + 蓝奏云入口
+        shellAutoCheck = findViewById(R.id.shell_auto_check);
+        shellAutoCheck.setChecked(Prefs.shellAutoCheck(this));
+        shellAutoCheck.setOnCheckedChangeListener((button, checked) ->
+                Prefs.setShellAutoCheck(SettingsActivity.this, checked));
+        shellMirrorValue = findViewById(R.id.shell_mirror_value);
+        shellMirrorValue.setOnClickListener(v -> showMirrorDialog());
+        findViewById(R.id.shell_add_mirror).setOnClickListener(v -> showAddMirrorDialog());
+        findViewById(R.id.shell_lanzou).setOnClickListener(v -> openLanzou());
+        ((TextView) findViewById(R.id.hint_shell_lanzou)).setText(
+                getString(R.string.shell_lanzou_hint, getString(R.string.shell_lanzou_password)));
+        refreshMirrorLabel();
 
         paint();
     }
@@ -278,7 +296,8 @@ public class SettingsActivity extends Activity {
         ((TextView) findViewById(R.id.settings_title)).setTextColor(c[M3.ON_SURFACE]);
 
         int[] cards = {R.id.card_port, R.id.card_lan, R.id.card_background,
-                R.id.card_background_guide, R.id.card_feed, R.id.card_appearance, R.id.card_seed};
+                R.id.card_background_guide, R.id.card_feed, R.id.card_appearance,
+                R.id.card_seed, R.id.card_shell_update};
         for (int id : cards) {
             View card = findViewById(id);
             GradientDrawable bg = new GradientDrawable();
@@ -288,13 +307,15 @@ public class SettingsActivity extends Activity {
         }
 
         int[] labels = {R.id.label_port, R.id.label_web_memory, R.id.label_background_guide,
-                R.id.label_feed, R.id.label_seed};
+                R.id.label_feed, R.id.label_seed, R.id.label_shell_update,
+                R.id.label_shell_mirror};
         for (int id : labels) {
             ((TextView) findViewById(id)).setTextColor(c[M3.ON_SURFACE]);
         }
         int[] hints = {R.id.hint_port, R.id.hint_lan, R.id.hint_web_memory,
                 R.id.hint_background_guide, R.id.hint_stable_channel,
-                R.id.monet_hint, R.id.hint_seed};
+                R.id.monet_hint, R.id.hint_seed, R.id.hint_shell_auto_check,
+                R.id.hint_shell_mirror, R.id.hint_shell_lanzou};
         for (int id : hints) {
             ((TextView) findViewById(id)).setTextColor(c[M3.ON_SURFACE_VARIANT]);
         }
@@ -312,6 +333,16 @@ public class SettingsActivity extends Activity {
         tintRadio(webReleaseCustom);
         ((Switch) lan).setTextColor(c[M3.ON_SURFACE]);
         ((Switch) monet).setTextColor(c[M3.ON_SURFACE]);
+        ((Switch) shellAutoCheck).setTextColor(c[M3.ON_SURFACE]);
+        tintSwitch(shellAutoCheck);
+
+        // 镜像选择框：和输入框一个样
+        GradientDrawable mvBg = new GradientDrawable();
+        mvBg.setColor(c[M3.SURFACE_CONTAINER_HIGHEST]);
+        mvBg.setCornerRadius(dp(12));
+        mvBg.setStroke(dp(1), c[M3.OUTLINE_VARIANT]);
+        shellMirrorValue.setBackground(mvBg);
+        shellMirrorValue.setTextColor(c[M3.ON_SURFACE]);
 
         // check update：outlined tonal —— surface 底 + outline 边 + primary 字
         Button check = findViewById(R.id.check_update);
@@ -326,6 +357,8 @@ public class SettingsActivity extends Activity {
         outlined(findViewById(R.id.open_notification_settings));
         outlined(findViewById(R.id.open_battery_settings));
         outlined(findViewById(R.id.open_background_guide));
+        outlined(findViewById(R.id.shell_add_mirror));
+        outlined(findViewById(R.id.shell_lanzou));
 
         filled(findViewById(R.id.save));
         tonal(findViewById(R.id.restart));
@@ -431,6 +464,89 @@ public class SettingsActivity extends Activity {
                 recreate();
             });
             seedBar.addView(dot);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // App 自更新：镜像选择 + 蓝奏云
+    // ------------------------------------------------------------------
+
+    /** 显示/刷新当前镜像名。 */
+    private void refreshMirrorLabel() {
+        String cur = Prefs.shellMirror(this);
+        if (cur == null || cur.isEmpty()) {
+            shellMirrorValue.setText(R.string.shell_mirror_official);
+        } else {
+            shellMirrorValue.setText(cur);
+        }
+    }
+
+    /** 弹镜像选择：内置几条 + 用户手动添加的。 */
+    private void showMirrorDialog() {
+        List<String> prefixes = new ArrayList<>();
+        List<String> names = new ArrayList<>();
+        for (int i = 0; i < ShellUpdater.MIRROR_PREFIXES.length; i++) {
+            prefixes.add(ShellUpdater.MIRROR_PREFIXES[i]);
+            names.add(ShellUpdater.MIRROR_NAMES[i]);
+        }
+        for (String p : Prefs.shellCustomMirrors(this)) {
+            prefixes.add(p);
+            names.add(p);
+        }
+        final String[] items = names.toArray(new String[0]);
+        AlertDialog dlg = new AlertDialog.Builder(this)
+                .setTitle(R.string.shell_mirror_dialog_title)
+                .setItems(items, (d, which) -> {
+                    Prefs.setShellMirror(this, prefixes.get(which));
+                    refreshMirrorLabel();
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .create();
+        styleDialog(dlg);
+        dlg.show();
+    }
+
+    /** 添加自定义镜像前缀。 */
+    private void showAddMirrorDialog() {
+        final EditText input = new EditText(this);
+        input.setHint("https://example.com/");
+        input.setSingleLine(true);
+        input.setTextColor(c[M3.ON_SURFACE]);
+        input.setHintTextColor(c[M3.ON_SURFACE_VARIANT]);
+        AlertDialog dlg = new AlertDialog.Builder(this)
+                .setTitle(R.string.shell_mirror_add_title)
+                .setMessage(R.string.shell_mirror_add_hint)
+                .setView(input)
+                .setPositiveButton(android.R.string.ok, (d, w) -> {
+                    String p = input.getText().toString().trim();
+                    if (!p.isEmpty()) {
+                        if (!p.endsWith("/")) {
+                            p = p + "/";
+                        }
+                        Prefs.addShellCustomMirror(this, p);
+                        Prefs.setShellMirror(this, p);
+                        refreshMirrorLabel();
+                    }
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .create();
+        styleDialog(dlg);
+        dlg.show();
+    }
+
+    /** 蓝奏云：复制密码到剪贴板 + 打开分享页。 */
+    private void openLanzou() {
+        String pwd = getString(R.string.shell_lanzou_password);
+        copyText(pwd);
+        openUrl(getString(R.string.shell_lanzou_url));
+        Toast.makeText(this, getString(R.string.lanzou_pwd_copied, pwd), Toast.LENGTH_LONG).show();
+    }
+
+    private void copyText(String text) {
+        android.content.ClipboardManager cm =
+                (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        if (cm != null) {
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("magpie", text));
         }
     }
 

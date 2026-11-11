@@ -162,4 +162,32 @@
     <string name="settings_open_background_guide">打开后台运行引导</string>
     <string name="settings_stable_channel">稳定版更新渠道</string>
     <string name="settings_stable_channel_hint">开启：只推送发布满三天后的稳定版；关闭：每个版本都推送（含紧急修复）。只影响 magpie 内核的检查更新，自定义更新源不受影响。</string>
+
+    <!-- 壳（APK）自更新：方案一 App 内下载 + 系统安装器，镜像选择，蓝奏云入口 -->
+    <string name="act_shell_update">检查 App 更新</string>
+    <string name="act_shell_update_sub">下载新版 APK 并用系统安装器安装，不跳浏览器</string>
+    <string name="shell_update_available_download">发现新版本 %1$s（下载源：%2$s），点「下载并安装」在 App 内直接更新。</string>
+    <string name="shell_download_install">下载并安装</string>
+    <string name="shell_open_page">打开发布页</string>
+    <string name="shell_mirror_official">GitHub 官方</string>
+    <string name="shell_downloading">正在下载新版本…</string>
+    <string name="shell_download_failed">下载失败：%1$s</string>
+    <string name="shell_install_failed">拉起安装器失败</string>
+    <string name="shell_need_unknown_source">需要允许本 App 安装未知应用，才能 App 内更新。</string>
+    <string name="shell_go_settings">去开启</string>
+    <string name="shell_update_auto_found">发现新版本 %1$s，是否现在下载安装？</string>
+    <string name="settings_shell_update">App 更新</string>
+    <string name="settings_shell_auto_check">自动检查更新</string>
+    <string name="settings_shell_auto_check_hint">每天检查一次，有新版本弹提醒；关闭后只在手动检查时才提示</string>
+    <string name="settings_shell_mirror">下载镜像</string>
+    <string name="settings_shell_mirror_hint">GitHub 直连慢或连不上时选国内加速镜像，也可以手动添加自定义镜像前缀</string>
+    <string name="settings_shell_add_mirror">添加自定义镜像</string>
+    <string name="settings_shell_lanzou">蓝奏云更新</string>
+    <string name="shell_mirror_dialog_title">选择下载镜像</string>
+    <string name="shell_mirror_add_title">添加自定义镜像</string>
+    <string name="shell_mirror_add_hint">输入镜像前缀（拼在 GitHub 直链前面），例如 https://example.com/</string>
+    <string name="shell_lanzou_hint">蓝奏云下载（密码 %1$s），点此打开</string>
+    <string name="shell_lanzou_url">https://wwbcx.lanzout.com/b0rbkmqxa</string>
+    <string name="shell_lanzou_password">9vgx</string>
+    <string name="lanzou_pwd_copied">密码 %1$s 已复制，正在打开蓝奏云</string>
 </resources>

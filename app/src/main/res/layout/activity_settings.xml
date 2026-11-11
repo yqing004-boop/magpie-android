@@ -320,6 +320,88 @@
                 android:orientation="horizontal" />
         </LinearLayout>
 
+        <!-- 壳（APK）自更新：自动检查开关、下载镜像选择、蓝奏云入口 -->
+        <LinearLayout
+            android:id="@+id/card_shell_update"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="vertical"
+            android:paddingStart="16dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="14dp">
+
+            <TextView
+                android:id="@+id/label_shell_update"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_shell_update"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <Switch
+                android:id="@+id/shell_auto_check"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginTop="8dp"
+                android:text="@string/settings_shell_auto_check"
+                android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/hint_shell_auto_check"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_shell_auto_check_hint"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/label_shell_mirror"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:text="@string/settings_shell_mirror"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/shell_mirror_value"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginTop="6dp"
+                android:gravity="center_vertical"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/hint_shell_mirror"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_shell_mirror_hint"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/shell_add_mirror"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="10dp"
+                android:text="@string/settings_shell_add_mirror" />
+
+            <Button
+                android:id="@+id/shell_lanzou"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="8dp"
+                android:text="@string/settings_shell_lanzou" />
+
+            <TextView
+                android:id="@+id/hint_shell_lanzou"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="12sp" />
+        </LinearLayout>
+
         <Button
             android:id="@+id/save"
             android:layout_width="match_parent"

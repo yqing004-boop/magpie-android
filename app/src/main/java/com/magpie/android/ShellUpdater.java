@@ -3,6 +3,7 @@ package com.magpie.android;
 import android.content.Context;
 import android.util.Log;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -34,6 +35,23 @@ public final class ShellUpdater {
     /** 开源仓库名。 */
     private static final String REPO = "magpie-android";
 
+    /** 内置镜像前缀（空串 = GitHub 官方直连）。用户可在设置页手动添加更多。 */
+    public static final String[] MIRROR_PREFIXES = {
+            "",
+            "https://gh-proxy.com/",
+            "https://mirror.ghproxy.com/",
+            "https://ghproxy.net/",
+            "https://gh.ddlc.top/",
+    };
+
+    public static final String[] MIRROR_NAMES = {
+            "GitHub 官方",
+            "gh-proxy.com",
+            "mirror.ghproxy.com",
+            "ghproxy.net",
+            "gh.ddlc.top",
+    };
+
     public interface Callback {
         void result(Result result);
     }
@@ -42,16 +60,24 @@ public final class ShellUpdater {
     public static final class Result {
         public final String latestTag;
         public final String page;
+        /** APK 的 GitHub 原始直链（未拼镜像）。 */
+        public final String downloadUrl;
         public final String error;
 
-        Result(String tag, String page, String error) {
+        Result(String tag, String page, String downloadUrl, String error) {
             this.latestTag = tag;
             this.page = page;
+            this.downloadUrl = downloadUrl;
             this.error = error;
         }
 
         public boolean ok() {
             return error == null && latestTag != null && !latestTag.isEmpty();
+        }
+
+        /** 是否有可下载的 APK。 */
+        public boolean hasApk() {
+            return downloadUrl != null && !downloadUrl.isEmpty();
         }
     }
 
@@ -79,7 +105,7 @@ public final class ShellUpdater {
                 result = fetch();
             } catch (IOException e) {
                 Log.w(TAG, "检查壳更新失败: " + e);
-                result = new Result("", "", e.getMessage());
+                result = new Result("", "", "", e.getMessage());
             }
             final Result r = result;
             new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> cb.result(r));
@@ -96,17 +122,32 @@ public final class ShellUpdater {
         try {
             int code = c.getResponseCode();
             if (code == 404) {
-                return new Result("", "", "仓库还没有 Release");
+                return new Result("", "", "", "仓库还没有 Release");
             }
             if (code != 200) {
-                return new Result("", "", "GitHub 返回 " + code);
+                return new Result("", "", "", "GitHub 返回 " + code);
             }
             String body = readAll(c.getInputStream());
             try {
                 JSONObject j = new JSONObject(body);
                 String tag = j.optString("tag_name", "");
                 String page = j.optString("html_url", releasesPage());
-                return new Result(stripV(tag), page, null);
+                String dl = "";
+                JSONArray assets = j.optJSONArray("assets");
+                if (assets != null) {
+                    for (int i = 0; i < assets.length(); i++) {
+                        JSONObject a = assets.optJSONObject(i);
+                        if (a == null) {
+                            continue;
+                        }
+                        String name = a.optString("name", "");
+                        if (name.toLowerCase().endsWith(".apk")) {
+                            dl = a.optString("browser_download_url", "");
+                            break;
+                        }
+                    }
+                }
+                return new Result(stripV(tag), page, dl, null);
             } catch (org.json.JSONException e) {
                 throw new IOException("GitHub 响应不是 JSON：" + e.getMessage());
             }
@@ -136,6 +177,14 @@ public final class ShellUpdater {
         String t = tag.trim();
         return t.length() > 1 && (t.charAt(0) == 'v' || t.charAt(0) == 'V')
                 && Character.isDigit(t.charAt(1)) ? t.substring(1) : t;
+    }
+
+    /** 把镜像前缀拼到下载直链前面；prefix 空则原样返回。 */
+    public static String mirrored(String prefix, String url) {
+        if (prefix == null || prefix.isEmpty()) {
+            return url;
+        }
+        return prefix + url;
     }
 
     /** 按 "1.0.25" 这种点分数字比较；latest > local 返回 true。 */

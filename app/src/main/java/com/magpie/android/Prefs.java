@@ -4,6 +4,8 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 import java.security.SecureRandom;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * The handful of things the wrapper keeps: which address the gateway binds,
@@ -38,6 +40,16 @@ public final class Prefs {
     public static final String LAST_CHECK = "last_check";
     /** 上次检查时看到的新版本号，菜单上可以提示一句。 */
     public static final String KNOWN_LATEST = "known_latest";
+    /** 壳更新：自动检查开关（默认开）。 */
+    public static final String SHELL_AUTO_CHECK = "shell_auto_check";
+    /** 壳更新：上次静默检查时间（毫秒）。 */
+    public static final String SHELL_LAST_CHECK = "shell_last_check";
+    /** 壳更新：上次检查时看到的新版本号。 */
+    public static final String SHELL_KNOWN_LATEST = "shell_known_latest";
+    /** 壳更新：当前下载镜像前缀（空串 = GitHub 官方直连）。 */
+    public static final String SHELL_MIRROR = "shell_mirror";
+    /** 壳更新：用户手动添加的镜像前缀列表。 */
+    public static final String SHELL_CUSTOM_MIRRORS = "shell_custom_mirrors";
 
     public static final String DEFAULT_HOST = "127.0.0.1";
     public static final int DEFAULT_PORT = 3425;
@@ -159,6 +171,65 @@ public final class Prefs {
 
     public static String knownLatest(Context ctx) {
         return sp(ctx).getString(KNOWN_LATEST, "");
+    }
+
+    // ------------------------------------------------------------------
+    // 壳更新（APK）
+    // ------------------------------------------------------------------
+
+    public static boolean shellAutoCheck(Context ctx) {
+        return sp(ctx).getBoolean(SHELL_AUTO_CHECK, true);
+    }
+
+    public static void setShellAutoCheck(Context ctx, boolean on) {
+        sp(ctx).edit().putBoolean(SHELL_AUTO_CHECK, on).apply();
+    }
+
+    public static long shellLastCheck(Context ctx) {
+        return sp(ctx).getLong(SHELL_LAST_CHECK, 0);
+    }
+
+    public static void noteShellChecked(Context ctx, String latest) {
+        sp(ctx).edit()
+                .putLong(SHELL_LAST_CHECK, System.currentTimeMillis())
+                .putString(SHELL_KNOWN_LATEST, latest == null ? "" : latest)
+                .apply();
+    }
+
+    public static String shellKnownLatest(Context ctx) {
+        return sp(ctx).getString(SHELL_KNOWN_LATEST, "");
+    }
+
+    /** 当前壳更新镜像前缀；空串表示 GitHub 官方直连。 */
+    public static String shellMirror(Context ctx) {
+        return sp(ctx).getString(SHELL_MIRROR, "");
+    }
+
+    public static void setShellMirror(Context ctx, String prefix) {
+        if (prefix == null) {
+            prefix = "";
+        }
+        sp(ctx).edit().putString(SHELL_MIRROR, prefix).apply();
+    }
+
+    /** 用户手动添加的镜像前缀。 */
+    public static Set<String> shellCustomMirrors(Context ctx) {
+        return sp(ctx).getStringSet(SHELL_CUSTOM_MIRRORS, new HashSet<String>());
+    }
+
+    public static void addShellCustomMirror(Context ctx, String prefix) {
+        if (prefix == null || prefix.trim().isEmpty()) {
+            return;
+        }
+        Set<String> s = new HashSet<>(shellCustomMirrors(ctx));
+        s.add(prefix.trim());
+        sp(ctx).edit().putStringSet(SHELL_CUSTOM_MIRRORS, s).apply();
+    }
+
+    public static void removeShellCustomMirror(Context ctx, String prefix) {
+        Set<String> s = new HashSet<>(shellCustomMirrors(ctx));
+        s.remove(prefix);
+        sp(ctx).edit().putStringSet(SHELL_CUSTOM_MIRRORS, s).apply();
     }
 
     /** 是否已经把 magpie 自带的自动更新关掉（只做一次）。 */

@@ -3,6 +3,7 @@ package com.magpie.android;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
+import android.app.ProgressDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -47,7 +48,12 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -153,6 +159,7 @@ public class MainActivity extends Activity {
 
         startGatewayAndWait();
         autoCheckUpdates();
+        autoCheckShellUpdate();
         // 首次启动的后台保活引导：通知权限、电池优化、厂商自启动步骤
         ui.postDelayed(() -> BackgroundGuide.maybeShowOnLaunch(this), 2500);
     }
@@ -1438,6 +1445,8 @@ public class MainActivity extends Activity {
                 getString(R.string.act_settings_sub), this::openSettings);
         addSheetItem(box, d, "\u21e9", getString(R.string.act_update),
                 getString(R.string.act_update_sub), this::openUpdate);
+        addSheetItem(box, d, "\u2b07", getString(R.string.act_shell_update),
+                getString(R.string.act_shell_update_sub), this::checkShellUpdate);
         addSheetItem(box, d, "\u270e", getString(R.string.act_marvis_paste),
                 getString(R.string.act_marvis_paste_sub), this::showMarvisPaste);
         addSheetItem(box, d, "\u26a1", getString(R.string.act_battery),
@@ -1741,5 +1750,197 @@ public class MainActivity extends Activity {
                 Log.i(TAG, "静默检查更新没成功: " + e.getMessage());
             }
         }, "magpie-auto-update").start();
+    }
+
+    // ------------------------------------------------------------------
+    // 壳（APK）自更新：方案一 —— App 内下载 + 拉起系统安装器，不跳浏览器
+    // ------------------------------------------------------------------
+
+    /** 三点菜单里的「检查 App 更新」：查 GitHub → 有新版本弹下载确认。 */
+    private void checkShellUpdate() {
+        final String local = ShellUpdater.localVersion(this);
+        ShellUpdater.check(this, r -> {
+            if (!r.ok()) {
+                AlertDialog dlg = new AlertDialog.Builder(this)
+                        .setTitle(R.string.shell_update_title)
+                        .setMessage(getString(R.string.shell_update_failed, r.error))
+                        .setPositiveButton(android.R.string.ok, null)
+                        .create();
+                styleDialog(dlg);
+                dlg.show();
+                return;
+            }
+            if (!ShellUpdater.newer(r.latestTag, local)) {
+                AlertDialog dlg = new AlertDialog.Builder(this)
+                        .setTitle(R.string.shell_update_title)
+                        .setMessage(getString(R.string.shell_update_latest, local))
+                        .setPositiveButton(android.R.string.ok, null)
+                        .create();
+                styleDialog(dlg);
+                dlg.show();
+                return;
+            }
+            final String mirror = Prefs.shellMirror(this);
+            if (!r.hasApk()) {
+                // Release 里没有 APK 资产，退回跳发布页
+                openUrl(r.page);
+                return;
+            }
+            final String url = ShellUpdater.mirrored(mirror, r.downloadUrl);
+            AlertDialog dlg = new AlertDialog.Builder(this)
+                    .setTitle(R.string.shell_update_title)
+                    .setMessage(getString(R.string.shell_update_available_download,
+                            r.latestTag, mirrorLabel(mirror)))
+                    .setPositiveButton(R.string.shell_download_install,
+                            (d, w) -> downloadApkAndInstall(url, r.latestTag))
+                    .setNeutralButton(R.string.shell_open_page, (d, w) -> openUrl(r.page))
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .create();
+            styleDialog(dlg);
+            dlg.show();
+        });
+    }
+
+    /** 启动时静默查一次壳更新（每天一次，设置里可关）。 */
+    private void autoCheckShellUpdate() {
+        if (!Prefs.shellAutoCheck(this)) {
+            return;
+        }
+        if (System.currentTimeMillis() - Prefs.shellLastCheck(this) < AUTO_CHECK_EVERY) {
+            return;
+        }
+        ShellUpdater.check(this, r -> {
+            if (!r.ok()) {
+                return; // 网络失败这次不算，下次再试
+            }
+            Prefs.noteShellChecked(this, r.latestTag);
+            if (ShellUpdater.newer(r.latestTag, ShellUpdater.localVersion(this))) {
+                final String mirror = Prefs.shellMirror(this);
+                AlertDialog dlg = new AlertDialog.Builder(this)
+                        .setTitle(R.string.shell_update_title)
+                        .setMessage(getString(R.string.shell_update_auto_found, r.latestTag))
+                        .setPositiveButton(R.string.shell_download_install, (d, w) -> {
+                            if (r.hasApk()) {
+                                downloadApkAndInstall(ShellUpdater.mirrored(mirror, r.downloadUrl),
+                                        r.latestTag);
+                            } else {
+                                openUrl(r.page);
+                            }
+                        })
+                        .setNegativeButton(android.R.string.cancel, null)
+                        .create();
+                styleDialog(dlg);
+                dlg.show();
+            }
+        });
+    }
+
+    private String mirrorLabel(String mirror) {
+        if (mirror == null || mirror.isEmpty()) {
+            return getString(R.string.shell_mirror_official);
+        }
+        return mirror;
+    }
+
+    /** 下载 APK 到 cacheDir，然后拉起系统安装器。 */
+    private void downloadApkAndInstall(String url, String version) {
+        if (Build.VERSION.SDK_INT >= 26
+                && !getPackageManager().canRequestPackageInstalls()) {
+            AlertDialog dlg = new AlertDialog.Builder(this)
+                    .setTitle(R.string.shell_update_title)
+                    .setMessage(R.string.shell_need_unknown_source)
+                    .setPositiveButton(R.string.shell_go_settings, (d, w) -> {
+                        try {
+                            startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                    Uri.parse("package:" + getPackageName())));
+                        } catch (Exception e) {
+                            Toast.makeText(this, R.string.shell_install_failed, Toast.LENGTH_LONG).show();
+                        }
+                    })
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .create();
+            styleDialog(dlg);
+            dlg.show();
+            return;
+        }
+        final ProgressDialog pd = new ProgressDialog(this);
+        pd.setMessage(getString(R.string.shell_downloading));
+        pd.setIndeterminate(true);
+        pd.setCancelable(false);
+        pd.show();
+        new Thread(() -> {
+            try {
+                File dir = new File(getCacheDir(), "apk");
+                if (!dir.isDirectory() && !dir.mkdirs()) {
+                    throw new IOException("无法创建下载目录");
+                }
+                File apk = new File(dir, "magpie-update.apk");
+                download(url, apk);
+                ui.post(() -> {
+                    if (pd.isShowing()) {
+                        pd.dismiss();
+                    }
+                    installApk(apk);
+                });
+            } catch (IOException e) {
+                Log.w(TAG, "下载 APK 失败: " + e);
+                ui.post(() -> {
+                    if (pd.isShowing()) {
+                        pd.dismiss();
+                    }
+                    AlertDialog dlg = new AlertDialog.Builder(this)
+                            .setTitle(R.string.shell_update_title)
+                            .setMessage(getString(R.string.shell_download_failed, e.getMessage()))
+                            .setPositiveButton(android.R.string.ok, null)
+                            .create();
+                    styleDialog(dlg);
+                    dlg.show();
+                });
+            }
+        }, "magpie-apk-download").start();
+    }
+
+    /** 拉起系统安装器装 APK（content:// + 临时读授权）。 */
+    private void installApk(File apk) {
+        try {
+            Uri uri = Uri.parse("content://" + ApkFileProvider.AUTHORITY + "/" + apk.getName());
+            Intent i = new Intent(Intent.ACTION_VIEW);
+            i.setDataAndType(uri, "application/vnd.android.package-archive");
+            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(i);
+        } catch (Exception e) {
+            Log.w(TAG, "拉起安装器失败: " + e);
+            Toast.makeText(this, R.string.shell_install_failed, Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /** 简单 GET 下载，写满本地文件。 */
+    private static void download(String url, File dest) throws IOException {
+        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+        c.setRequestProperty("User-Agent", "magpie-android-shell");
+        c.setInstanceFollowRedirects(true);
+        c.setConnectTimeout(15_000);
+        c.setReadTimeout(60_000);
+        try {
+            int code = c.getResponseCode();
+            if (code != 200) {
+                throw new IOException("HTTP " + code);
+            }
+            File tmp = new File(dest.getAbsolutePath() + ".tmp");
+            try (InputStream in = c.getInputStream();
+                 FileOutputStream out = new FileOutputStream(tmp)) {
+                byte[] buf = new byte[1 << 16];
+                int n;
+                while ((n = in.read(buf)) != -1) {
+                    out.write(buf, 0, n);
+                }
+                out.flush();
+            }
+            if (!tmp.renameTo(dest)) {
+                throw new IOException("写不出目标文件");
+            }
+        } finally {
+            c.disconnect();
+        }
     }
 }
