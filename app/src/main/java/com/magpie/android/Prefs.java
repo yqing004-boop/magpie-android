@@ -100,9 +100,9 @@ public final class Prefs {
         return sp(ctx).getBoolean(LAN, false);
     }
 
-    /** 0=从不；其余值为后台释放 WebView 的分钟数。 */
+    /** 0=从不；其余值为后台释放 WebView 的分钟数。默认 10 分钟。 */
     public static int webReleaseMinutes(Context ctx) {
-        int m = sp(ctx).getInt(WEB_RELEASE_MINUTES, 0);
+        int m = sp(ctx).getInt(WEB_RELEASE_MINUTES, 10);
         return m >= 1 && m <= 1440 ? m : 0;
     }
 

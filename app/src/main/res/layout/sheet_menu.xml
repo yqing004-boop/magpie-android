@@ -34,9 +34,17 @@
         android:layout_marginBottom="10dp"
         android:textSize="13sp" />
 
-    <LinearLayout
-        android:id="@+id/sheet_items"
+    <!-- 小屏内容超出一屏时，只滚列表区，标题和拖拽条不动 -->
+    <ScrollView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical" />
+        android:scrollbars="none"
+        android:overScrollMode="never">
+
+        <LinearLayout
+            android:id="@+id/sheet_items"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </ScrollView>
 </LinearLayout>

@@ -127,6 +127,12 @@
                     android:text="@string/settings_web_never" />
 
                 <RadioButton
+                    android:id="@+id/web_release_10"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:text="@string/settings_web_10" />
+
+                <RadioButton
                     android:id="@+id/web_release_15"
                     android:layout_width="match_parent"
                     android:layout_height="44dp"

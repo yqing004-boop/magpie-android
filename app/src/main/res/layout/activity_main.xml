@@ -27,7 +27,7 @@
             android:paddingStart="8dp"
             android:paddingTop="6dp"
             android:paddingEnd="6dp"
-            android:paddingBottom="6dp">
+            android:paddingBottom="3dp">
 
             <ImageView
                 android:id="@+id/avatar"
@@ -114,13 +114,13 @@
                 android:textSize="20sp" />
         </LinearLayout>
 
-        <!-- 内容区：24dp 圆弧，里面是 magpie 的 Web UI（圆角由代码 clipToOutline 裁） -->
+        <!-- 内容区：与顶栏拼成同一张卡，只留底部圆角（圆角由 applyTheme 只做底角） -->
         <FrameLayout
             android:id="@+id/web_card"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_marginStart="12dp"
-            android:layout_marginTop="6dp"
+            android:layout_marginTop="0dp"
             android:layout_marginEnd="12dp"
             android:layout_marginBottom="10dp"
             android:layout_weight="1">

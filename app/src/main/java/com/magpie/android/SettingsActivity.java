@@ -50,6 +50,7 @@ public class SettingsActivity extends Activity {
     private TextView shellMirrorValue;
     private RadioGroup webReleaseGroup;
     private RadioButton webReleaseNever;
+    private RadioButton webRelease10;
     private RadioButton webRelease15;
     private RadioButton webRelease30;
     private RadioButton webReleaseCustom;
@@ -77,6 +78,7 @@ public class SettingsActivity extends Activity {
         feed = findViewById(R.id.feed);
         webReleaseGroup = findViewById(R.id.web_release_group);
         webReleaseNever = findViewById(R.id.web_release_never);
+        webRelease10 = findViewById(R.id.web_release_10);
         webRelease15 = findViewById(R.id.web_release_15);
         webRelease30 = findViewById(R.id.web_release_30);
         webReleaseCustom = findViewById(R.id.web_release_custom);
@@ -163,7 +165,9 @@ public class SettingsActivity extends Activity {
     /** 后台 WebView 释放时间：0/15/30/用户自定义分钟。 */
     private void setupWebReleasePicker() {
         int minutes = Prefs.webReleaseMinutes(this);
-        if (minutes == 15) {
+        if (minutes == 10) {
+            webRelease10.setChecked(true);
+        } else if (minutes == 15) {
             webRelease15.setChecked(true);
         } else if (minutes == 30) {
             webRelease30.setChecked(true);
@@ -182,7 +186,9 @@ public class SettingsActivity extends Activity {
 
     private boolean saveWebReleasePicker() {
         int minutes = 0;
-        if (webRelease15.isChecked()) {
+        if (webRelease10.isChecked()) {
+            minutes = 10;
+        } else if (webRelease15.isChecked()) {
             minutes = 15;
         } else if (webRelease30.isChecked()) {
             minutes = 30;
@@ -328,6 +334,7 @@ public class SettingsActivity extends Activity {
         tintSwitch(stableChannel);
         ((Switch) stableChannel).setTextColor(c[M3.ON_SURFACE]);
         tintRadio(webReleaseNever);
+        tintRadio(webRelease10);
         tintRadio(webRelease15);
         tintRadio(webRelease30);
         tintRadio(webReleaseCustom);

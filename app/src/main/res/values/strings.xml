@@ -79,6 +79,7 @@
     <string name="settings_bg_default">跟随系统</string>
     <string name="menu_desktop_layout">桌面宽屏排版</string>
     <string name="menu_narrow_layout">手机窄屏排版</string>
+    <string name="menu_desktop_sub">切换 magpie 页面的宽窄排版，切完自动刷新页面</string>
     <string name="menu_browser">用浏览器打开</string>
     <string name="toast_desktop">已切到桌面宽屏排版（设置 tab 全铺开）</string>
     <string name="toast_narrow">已切回手机排版</string>
@@ -135,6 +136,7 @@
     <string name="settings_web_memory">后台释放管理页面内存</string>
     <string name="settings_web_memory_hint">离开 App 一段时间后关闭管理页面 WebView，网关和 AI 请求继续运行。回来时页面会重新加载，未保存的网页编辑内容可能丢失。</string>
     <string name="settings_web_never">从不释放</string>
+    <string name="settings_web_10">后台 10 分钟后释放</string>
     <string name="settings_web_15">后台 15 分钟后释放</string>
     <string name="settings_web_30">后台 30 分钟后释放</string>
     <string name="settings_web_custom">自定义时间</string>

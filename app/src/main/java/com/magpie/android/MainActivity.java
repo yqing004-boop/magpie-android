@@ -282,7 +282,8 @@ public class MainActivity extends Activity {
         int onSurface = s[M3.ON_SURFACE];
         int onVariant = s[M3.ON_SURFACE_VARIANT];
 
-        header.setBackground(rounded(s[M3.SURFACE_CONTAINER], 24));
+        // 方案二：顶栏、内容区容器都透明，透出 root 的 surface，和 magpie 页面主背景（--bg=surface）同色。
+        header.setBackgroundColor(Color.TRANSPARENT);
 
         GradientDrawable chip = rounded(s[M3.SURFACE], 16);
         chip.setStroke(dp(1), s[M3.OUTLINE_VARIANT]);
@@ -306,10 +307,8 @@ public class MainActivity extends Activity {
             ((TextView) menu).setTextColor(onVariant);
         }
 
-        GradientDrawable content = rounded(s[M3.SURFACE_CONTAINER_LOWEST], 24);
-        content.setStroke(dp(1), s[M3.OUTLINE_VARIANT]);
         if (webCard != null) {
-            webCard.setBackground(content);
+            webCard.setBackgroundColor(Color.TRANSPARENT);
         }
         findViewById(R.id.root).setBackgroundColor(surface);
         overlay.setBackgroundColor(surface);
@@ -458,7 +457,8 @@ public class MainActivity extends Activity {
             android.graphics.Path all = new android.graphics.Path();
             all.addRect(b.left, b.top, b.right, b.bottom, android.graphics.Path.Direction.CW);
             android.graphics.Path rounded = new android.graphics.Path();
-            rounded.addRoundRect(new android.graphics.RectF(b), radius, radius,
+            rounded.addRoundRect(new android.graphics.RectF(b),
+                    new float[]{0, 0, 0, 0, radius, radius, radius, radius},
                     android.graphics.Path.Direction.CW);
             all.op(rounded, android.graphics.Path.Op.DIFFERENCE);
             canvas.drawPath(all, paint);
@@ -875,12 +875,17 @@ public class MainActivity extends Activity {
         webReleased = true;
     }
 
-    /** 内容区四角圆弧：容器与 WebView 各自带一个圆角 outline 再裁剪。 */
+    /** 内容区四角圆弧：与顶栏拼卡后只裁底部两角。 */
     private void applyWebOutline() {
+        final float r = dp(20);
         android.view.ViewOutlineProvider round = new android.view.ViewOutlineProvider() {
             @Override
             public void getOutline(View v, android.graphics.Outline o) {
-                o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), dp(20));
+                android.graphics.Path p = new android.graphics.Path();
+                p.addRoundRect(0, 0, v.getWidth(), v.getHeight(),
+                        new float[]{0, 0, 0, 0, r, r, r, r},
+                        android.graphics.Path.Direction.CW);
+                o.setConvexPath(p);
             }
         };
         if (webCard != null) {
@@ -1443,6 +1448,9 @@ public class MainActivity extends Activity {
                 getString(R.string.act_log_sub), this::showLog);
         addSheetItem(box, d, "\u2699", getString(R.string.act_settings),
                 getString(R.string.act_settings_sub), this::openSettings);
+        addSheetItem(box, d, "\u21c4", Prefs.desktopMode(this)
+                        ? getString(R.string.menu_narrow_layout) : getString(R.string.menu_desktop_layout),
+                getString(R.string.menu_desktop_sub), this::toggleDesktop);
         addSheetItem(box, d, "\u21e9", getString(R.string.act_update),
                 getString(R.string.act_update_sub), this::openUpdate);
         addSheetItem(box, d, "\u2b07", getString(R.string.act_shell_update),
@@ -1468,8 +1476,15 @@ public class MainActivity extends Activity {
 
         Window w = d.getWindow();
         if (w != null) {
+            // 小屏内容超高时限制到屏幕 85%，让列表区（ScrollView）滚动；否则自适应内容。
+            int screenW = getResources().getDisplayMetrics().widthPixels;
+            int screenH = getResources().getDisplayMetrics().heightPixels;
+            sheetRoot.measure(View.MeasureSpec.makeMeasureSpec(screenW, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+            int contentH = sheetRoot.getMeasuredHeight();
+            int maxH = (int) (screenH * 0.85f);
             w.setLayout(WindowManager.LayoutParams.MATCH_PARENT,
-                    WindowManager.LayoutParams.WRAP_CONTENT);
+                    contentH > maxH ? maxH : WindowManager.LayoutParams.WRAP_CONTENT);
             w.setGravity(Gravity.BOTTOM);
         }
         d.show();
