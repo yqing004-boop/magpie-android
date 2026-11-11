@@ -91,8 +91,6 @@ public class SettingsActivity extends Activity {
         feed.setText(Prefs.updateFeed(this));
         stableChannel = findViewById(R.id.stable_channel);
         stableChannel.setChecked(Prefs.stableChannel(this));
-        final String beforeNetwork = Prefs.port(this) + "|" + Prefs.lan(this) + "|"
-                + Prefs.updateFeed(this);
 
         monet = findViewById(R.id.monet);
         seedBar = findViewById(R.id.colors_seed);
@@ -110,6 +108,9 @@ public class SettingsActivity extends Activity {
             recreate();
         });
 
+        // 保存后**不再拉起网关**：设置落盘 → 停掉前台服务 → 关闭自身 App。
+        // 下次手动打开 App 时才用新设置启动，端口 / 局域网 / 更新源 / 稳定渠道
+        // 一并生效，也不会出现「反复恢复网关（上次退出码 1）」的循环。
         Button save = findViewById(R.id.save);
         save.setOnClickListener(v -> {
             if (!saveWebReleasePicker()) {
@@ -118,24 +119,15 @@ public class SettingsActivity extends Activity {
             Prefs.setPort(SettingsActivity.this, port.getText().toString());
             Prefs.setUpdateFeed(SettingsActivity.this, feed.getText().toString());
             Prefs.setStableChannel(SettingsActivity.this, stableChannel.isChecked());
-            // 只有端口 / 局域网 / 更新源变了才需要重启网关；换个主题色不该
-            // 把 agent 的连接掐断
-            String now = Prefs.port(SettingsActivity.this) + "|" + Prefs.lan(SettingsActivity.this)
-                    + "|" + Prefs.updateFeed(SettingsActivity.this);
-            if (!now.equals(beforeNetwork)) {
-                GatewayService.restart(SettingsActivity.this);
-            }
-            Toast.makeText(SettingsActivity.this, R.string.settings_save,
-                    Toast.LENGTH_SHORT).show();
-            setResult(RESULT_OK);
-            finish();
+            GatewayService.stop(SettingsActivity.this);
+            exitApp();
         });
 
+        // 「立即重启网关」同样改成：停网关 + 关闭自身 App，不自动拉起。
         Button restart = findViewById(R.id.restart);
         restart.setOnClickListener(v -> {
-            GatewayService.restart(SettingsActivity.this);
-            setResult(RESULT_OK);
-            finish();
+            GatewayService.stop(SettingsActivity.this);
+            exitApp();
         });
 
         // magpie 本体是那个 ELF，不是这个 APK：更新在这里，更新完网关重启就位
@@ -444,5 +436,12 @@ public class SettingsActivity extends Activity {
 
     private int dp(int v) {
         return Math.round(v * getResources().getDisplayMetrics().density);
+    }
+
+    /** 关闭自身 App：结束 Activity 再杀掉进程，前台服务、通知、恢复循环一起停。 */
+    private void exitApp() {
+        setResult(RESULT_OK);
+        finishAndRemoveTask();
+        android.os.Process.killProcess(android.os.Process.myPid());
     }
 }
