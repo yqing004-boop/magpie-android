@@ -129,6 +129,26 @@ final class MagpieApi {
     }
 
     /**
+     * 按供应商/模型筛选的用量聚合：走 {@code /api/usage/requests}（limit=1，只取顶层聚合，不含明细行）。
+     *
+     * <p>provider/model 传空串表示「全部」。返回的 Result.body 顶层结构与 {@code /api/usage} 类似：
+     * calls/errors/retried/canceled/input/output/cache_read/cache_write/reasoning/cost/unpriced/
+     * timed/ttft_ms/decode_ms/decode_out/decode_n/rates/up_bytes/down_bytes… + series[] + by{...}。
+     */
+    public static Result usageFiltered(Context ctx, String period, String provider, String model) {
+        StringBuilder q = new StringBuilder("/api/usage/requests?period=");
+        q.append(android.net.Uri.encode(period));
+        if (provider != null && !provider.isEmpty()) {
+            q.append("&provider=").append(android.net.Uri.encode(provider));
+        }
+        if (model != null && !model.isEmpty()) {
+            q.append("&model=").append(android.net.Uri.encode(model));
+        }
+        q.append("&limit=1");
+        return get(ctx, q.toString(), CONNECT_MS, READ_MS);
+    }
+
+    /**
      * 额度卡。magpie 读供应商要十几秒：第一次问往往先给旧卡，并在
      * X-Magpie-Reading: 1 里说「正在读」。这里不等它读完 —— 先把手上的画出来，
      * 页面看到 {@link Result#reading} 自己再排一次延后重取。

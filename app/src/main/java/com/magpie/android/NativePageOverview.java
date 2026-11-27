@@ -45,6 +45,11 @@ final class NativePageOverview extends NativePage {
 
     /** 当前选的周期：今天 / 24 小时 / 7 天 / 30 天 / 全部。 */
     private String period = "today";
+    /** 供应商 / 模型筛选（空串=全部）。 */
+    private String providerFilter = "";
+    private String modelFilter = "";
+    private final java.util.List<String> providerOptions = new java.util.ArrayList<>();
+    private final java.util.List<String> modelOptions = new java.util.ArrayList<>();
 
     private JSONArray cachedQuotas;
     /** 记下这份缓存对应的 QuotaCache 版本，变了就作废。 */
@@ -66,16 +71,36 @@ final class NativePageOverview extends NativePage {
         // 用量是本地日志算的，很快就回来；额度要问供应商，可能十几秒。
         // 所以分两步画：先把数字摆上去，额度那块慢慢补，别让整页空着等。
         final String p = period;
-        MagpieApi.Result usage = MagpieApi.usage(host, p);
-        if (!usage.ok()) {
-            String why = usage.why();
+        MagpieApi.Result base = MagpieApi.usage(host, p);
+        if (!base.ok()) {
+            String why = base.why();
             host.post(() -> {
                 failed(why);
                 done();
             });
             return;
         }
-        JSONObject u = usage.json();
+        JSONObject baseJson = base.json();
+        final java.util.List<String> pv = new java.util.ArrayList<>();
+        final java.util.List<String> mv = new java.util.ArrayList<>();
+        UsageFilterView.collectCandidates(baseJson, pv, mv);
+        boolean filtered = (providerFilter != null && !providerFilter.isEmpty())
+                || (modelFilter != null && !modelFilter.isEmpty());
+        final JSONObject u;
+        if (filtered) {
+            MagpieApi.Result f = MagpieApi.usageFiltered(host, p, providerFilter, modelFilter);
+            if (!f.ok()) {
+                String why = f.why();
+                host.post(() -> {
+                    failed(why);
+                    done();
+                });
+                return;
+            }
+            u = UsageFilterView.adaptFiltered(f.json());
+        } else {
+            u = baseJson;
+        }
         boolean fresh = !quotaPending && cachedQuotas != null
                 && cachedQuotaVersion == QuotaCache.version()
                 && System.currentTimeMillis() - quotaAt < QUOTA_TTL;
@@ -83,8 +108,23 @@ final class NativePageOverview extends NativePage {
         String shownWhy = fresh ? cachedQuotaWhy : null;
 
         host.post(() -> rebuildKeepingScroll(() -> {
+            providerOptions.clear();
+            providerOptions.addAll(pv);
+            modelOptions.clear();
+            modelOptions.addAll(mv);
             content.removeAllViews();
-            content.addView(periodBar());
+            content.addView(UsageFilterView.periodBar(host, ui, period, v -> onPeriodPicked(v)));
+            content.addView(UsageFilterView.dropdownRow(host, ui,
+                    "全部供应商", providerFilter, providerOptions,
+                    v -> {
+                        providerFilter = v;
+                        refresh(true);
+                    },
+                    "全部模型", modelFilter, modelOptions,
+                    v -> {
+                        modelFilter = v;
+                        refresh(true);
+                    }));
             content.addView(heroCard(u));
             content.addView(trendCard(u));
             if (shown != null && shown.length() > 0) {
@@ -157,6 +197,15 @@ final class NativePageOverview extends NativePage {
     // ------------------------------------------------------------------
 
     /** 所有周期选项：值 → 显示名。跟网页那个下拉一致。 */
+    /** 周期胶囊点了之后：换周期并重取（筛选保留）。 */
+    private void onPeriodPicked(String v) {
+        if (v == null || v.equals(period)) {
+            return;
+        }
+        period = v;
+        refresh(true);
+    }
+
     private static final String[][] PERIODS = {
             {"today", "今天"},
             {"last:24h0m0s", "24 小时"},

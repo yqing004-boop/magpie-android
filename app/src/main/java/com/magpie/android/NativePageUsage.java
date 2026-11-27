@@ -22,13 +22,14 @@ import org.json.JSONObject;
  */
 final class NativePageUsage extends NativePage {
 
-    private static final String[] PERIODS = {"today", "7d", "30d", "all"};
     private String period = "today";
-    /** 加载期间又点了别的周期：记下来，这次 done 后按最新选择重载。 */
-    private String pendingPeriod;
+    private String providerFilter = "";
+    private String modelFilter = "";
+    private final java.util.List<String> providerOptions = new java.util.ArrayList<>();
+    private final java.util.List<String> modelOptions = new java.util.ArrayList<>();
+    private boolean pendingReload;
 
     private LinearLayout body;
-    private LinearLayout periodBar;
 
     NativePageUsage(NativeHome host) {
         super(host);
@@ -52,62 +53,49 @@ final class NativePageUsage extends NativePage {
         if (keepY > 0) {
             scroll.post(() -> scroll.scrollTo(0, keepY));
         }
-        periodBar = ui.row();
-        periodBar.setPadding(ui.dp(14), ui.dp(4), ui.dp(14), ui.dp(2));
-        for (String p : PERIODS) {
-            TextView t = ui.text(NativeData.periodName(p), 12.5f,
-                    M3.ON_SURFACE_VARIANT, true);
-            t.setGravity(Gravity.CENTER);
-            t.setPadding(ui.dp(14), ui.dp(8), ui.dp(14), ui.dp(8));
-            final String key = p;
-            t.setOnClickListener(v -> {
-                if (key.equals(period) && pendingPeriod == null) {
-                    return;
-                }
-                if (loading) {
-                    // 正在取数：只记下最新选择，等这次 done 后按它重载，
-                    // 避免「标题已是新周期、数据还是旧周期」。
-                    pendingPeriod = key;
-                    return;
-                }
-                period = key;
-                pendingPeriod = null;
-                paintPeriodBar();
-                refresh(true);
-            });
-            LinearLayout.LayoutParams lp = ui.wrap();
-            lp.rightMargin = ui.dp(8);
-            periodBar.addView(t, lp);
-        }
-        content.addView(periodBar, 0);
-
+        content.addView(buildHeader(), 0);
         body = ui.column();
         content.addView(body, ui.matchWrap());
-        paintPeriodBar();
+    }
+
+    /** 周期胶囊条 + 供应商/模型下拉（两页共用 UsageFilterView）。 */
+    private View buildHeader() {
+        LinearLayout wrap = ui.column();
+        wrap.setLayoutParams(ui.matchWrap());
+        wrap.addView(UsageFilterView.periodBar(host, ui, period, v -> {
+            if (v == null || v.equals(period)) {
+                return;
+            }
+            period = v;
+            requestReload();
+        }));
+        wrap.addView(UsageFilterView.dropdownRow(host, ui,
+                "全部供应商", providerFilter, providerOptions,
+                v -> {
+                    providerFilter = v;
+                    requestReload();
+                },
+                "全部模型", modelFilter, modelOptions,
+                v -> {
+                    modelFilter = v;
+                    requestReload();
+                }));
+        return wrap;
+    }
+
+    /** 周期/筛选变化后重取；若正在加载就记下，等 done 后再重载（避免并发）。 */
+    private void requestReload() {
+        if (loading) {
+            pendingReload = true;
+            return;
+        }
+        refresh(true);
     }
 
     @Override
     LinearLayout renderTarget() {
-        // 必须先有骨架：failed()/showLoading() 都写到这里，返回 content 会把
-        // 周期条整个盖掉（骨架没建时的边缘情况）。
         ensureSkeleton();
         return body;
-    }
-
-    private void paintPeriodBar() {
-        if (periodBar == null) {
-            return;
-        }
-        for (int i = 0; i < periodBar.getChildCount(); i++) {
-            View v = periodBar.getChildAt(i);
-            if (!(v instanceof TextView)) {
-                continue;
-            }
-            TextView t = (TextView) v;
-            boolean on = PERIODS[i].equals(period);
-            t.setTextColor(on ? ui.col(M3.ON_SECONDARY_CONTAINER) : ui.col(M3.ON_SURFACE_VARIANT));
-            t.setBackground(on ? ui.round(ui.col(M3.SECONDARY_CONTAINER), 999) : null);
-        }
     }
 
     // ------------------------------------------------------------------
@@ -117,48 +105,66 @@ final class NativePageUsage extends NativePage {
     @Override
     void load() {
         final String p = period;
-        MagpieApi.Result usage = MagpieApi.usage(host, p);
-        if (!usage.ok()) {
+        MagpieApi.Result base = MagpieApi.usage(host, p);
+        if (!base.ok()) {
             host.post(() -> {
-                ensureSkeleton();
                 period = p;
-                paintPeriodBar();
+                body = null;
+                ensureSkeleton();
                 body.removeAllViews();
-                failed(usage.why());
+                failed(base.why());
                 done();
             });
             return;
         }
+        JSONObject baseJson = base.json();
+        final java.util.List<String> pv = new java.util.ArrayList<>();
+        final java.util.List<String> mv = new java.util.ArrayList<>();
+        UsageFilterView.collectCandidates(baseJson, pv, mv);
+        boolean filtered = (providerFilter != null && !providerFilter.isEmpty())
+                || (modelFilter != null && !modelFilter.isEmpty());
+        final JSONObject u;
+        if (filtered) {
+            MagpieApi.Result f = MagpieApi.usageFiltered(host, p, providerFilter, modelFilter);
+            if (!f.ok()) {
+                host.post(() -> {
+                    period = p;
+                    body = null;
+                    ensureSkeleton();
+                    body.removeAllViews();
+                    failed(f.why());
+                    done();
+                });
+                return;
+            }
+            u = UsageFilterView.adaptFiltered(f.json());
+        } else {
+            u = baseJson;
+        }
         MagpieApi.Result req = MagpieApi.requests(host, p, 5);
-        JSONObject u = usage.json();
-        JSONObject r = req.ok() ? req.json() : null;
-
+        final JSONObject r = req.ok() ? req.json() : null;
+        final String reqWhy = req.ok() ? null : req.why();
         host.post(() -> {
-            ensureSkeleton();
-            // 周期条和标题都对齐到本次抓取的 p，避免标题/数据错位
             period = p;
-            paintPeriodBar();
+            providerOptions.clear();
+            providerOptions.addAll(pv);
+            modelOptions.clear();
+            modelOptions.addAll(mv);
+            body = null;
+            ensureSkeleton();
             body.removeAllViews();
-            render(u, r, req.ok() ? null : req.why());
+            render(u, r, reqWhy);
             done();
         });
     }
 
-    /**
-     * 收尾：若加载期间又点了别的周期，这次画完后按最新选择再取一次。
-     * 这样周期条高亮、标题、数据三者始终一致。
-     */
     @Override
     void done() {
-        final String next = pendingPeriod;
-        pendingPeriod = null;
+        final boolean reload = pendingReload;
+        pendingReload = false;
         super.done();
-        if (next != null && !next.equals(period)) {
-            host.post(() -> {
-                period = next;
-                paintPeriodBar();
-                refresh(true);
-            });
+        if (reload) {
+            host.post(() -> refresh(true));
         }
     }
 

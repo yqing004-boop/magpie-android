@@ -123,6 +123,8 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         Prefs.webKey(this);
         setContentView(R.layout.activity_main);
+        // 按设置决定是否从系统「最近任务」隐藏（防手滑划掉）
+        NativeHome.applyHideFromRecents(this, Prefs.hideFromRecents(this));
 
         web = findViewById(R.id.web);
         overlay = findViewById(R.id.overlay);

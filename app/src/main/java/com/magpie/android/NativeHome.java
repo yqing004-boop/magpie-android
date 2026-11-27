@@ -165,6 +165,8 @@ public class NativeHome extends Activity {
         sNavHeight = navHeight;
         buildShell();
         setupImmersive();
+        // 按设置决定是否从系统「最近任务」隐藏（防手滑划掉）
+        applyHideFromRecents(this, Prefs.hideFromRecents(this));
         startGateway();
         pollGateway();
         if (savedInstanceState != null) {
@@ -231,6 +233,12 @@ public class NativeHome extends Activity {
     protected void onResume() {
         super.onResume();
         resumed = true;
+        // 启动/回前台兜底：AppTask 在 onCreate 时可能尚未登记，这里再补一次「排除最近任务」
+        uiHandler.postDelayed(() -> {
+            if (!isFinishing() && !isDestroyed()) {
+                applyHideFromRecents(this, Prefs.hideFromRecents(this));
+            }
+        }, 100);
         // 从后台回来：如果刚才后台待得够久（小米 greeze 约 40 秒就冻），
         // 补一条「为什么刚才卡」的提醒；时间戳为 0 时什么都不做。
         FreezeGuard.checkAfterReturn(this, Prefs.freezeLeftAt(this));
@@ -853,7 +861,7 @@ public class NativeHome extends Activity {
         final String[][] titles = {
                 {"赞赏作者", "打开控制后台", "界面主题", "错误诊断", "AI 排查端口"},
                 {"重启网关", "悬浮球保活", "查看日志", "复制网关地址", "省电策略实验室",
-                        "安装 Antigravity CLI"},
+                        "安装 Antigravity CLI", "固定网关当前访问密钥（K值）", "隐藏最近任务（防误删）"},
                 {"导入本地插件", "粘贴 Marvis 登录回调", "文件管理器", "缓存清理"},
                 {"检查 magpie 更新", "检查 App 更新", "更新设置"},
                 {"复制网页登录链接", "用浏览器打开", "设置", "关于"},
@@ -868,7 +876,9 @@ public class NativeHome extends Activity {
                         "设了无限制仍被系统掐断？加个悬浮球通常就不断了（图标/大小可调）",
                         "网关最后写下的三百行输出", "把 …:3425/v1 复制到剪贴板",
                         "诊断后台被冻结的原因，可一键设无限制（需 root）",
-                        "给 Antigravity 供应商装 CLI（下载约65MB，约 200MB 磁盘占用）；装好后去供应商页点重试登录"},
+                        "给 Antigravity 供应商装 CLI（下载约65MB，约 200MB 磁盘占用）；装好后去供应商页点重试登录",
+                        "把当前的 k 锁住，之后不会自动变化（清除 App 数据除外）；用于固定网页访问链接",
+                        "开启后，最近任务里看不到 magpie，防手滑划掉；想回 App 从桌面图标进"},
                 {"从手机存储选文件夹，拷进沙箱并交给 magpie",
                         "浏览器里登录完，把地址栏整条 URL 贴进来",
                         "浏览、导入、删除、复制 magpie HOME 目录里的文件",
@@ -885,10 +895,10 @@ public class NativeHome extends Activity {
                 {R.drawable.ic_hand_heart, R.drawable.ic_monitor_cog,
                         R.drawable.ic_layout_dashboard, R.drawable.ic_stethoscope,
                         R.drawable.ic_bot},
-                // 网关：重启 / 悬浮球 / 日志 / 复制地址 / 省电实验室 / 安装 Antigravity CLI
+                // 网关：重启 / 悬浮球 / 日志 / 复制地址 / 省电实验室 / 安装 Antigravity CLI / 固定K
                 {R.drawable.ic_rotate_cw, R.drawable.ic_aperture,
                         R.drawable.ic_file_text, R.drawable.ic_copy, R.drawable.ic_flask_conical,
-                        R.drawable.ic_download},
+                        R.drawable.ic_download, R.drawable.ic_copy, R.drawable.ic_aperture},
                 // 插件：导入 / 粘贴回调 / 文件管理器 / 缓存清理
                 {R.drawable.ic_folder, R.drawable.ic_link, R.drawable.ic_folder_open,
                         R.drawable.ic_trash_2},
@@ -899,6 +909,11 @@ public class NativeHome extends Activity {
                 {R.drawable.ic_link, R.drawable.ic_external_link,
                         R.drawable.ic_settings, R.drawable.ic_info},
         };
+
+        // 「隐藏最近任务」的说明随开关状态动态显示（菜单一次性构建时读一次 Prefs）
+        subs[1][7] = Prefs.hideFromRecents(this)
+                ? "已开启 · 最近任务里不显示 magpie"
+                : "关闭 · 开启后最近任务里看不到 magpie，防手滑划掉";
 
         final Dialog dialog = new Dialog(this, R.style.Theme_Magpie_Sheet);
         LinearLayout root = new LinearLayout(this);
@@ -948,10 +963,34 @@ public class NativeHome extends Activity {
 
             for (int i = 0; i < titles[g].length; i++) {
                 final int gg = g, ii = i;
-                list.addView(menuCard(icons[g][i], titles[g][i], subs[g][i], () -> {
+                Runnable act = () -> {
                     dialog.dismiss();
                     runMenuAction(gg, ii, titles[gg][ii]);
-                }));
+                };
+                // 「隐藏最近任务」这一行右侧带一个开关（其余项不加）
+                if (g == 1 && i == 7) {
+                    android.widget.Switch sw = new android.widget.Switch(this);
+                    sw.setChecked(Prefs.hideFromRecents(this));
+                    sw.setClickable(true);
+                    try {
+                        int blue = ui.col(M3.PRIMARY);   // 主题蓝
+                        int red = ui.col(M3.ERROR);       // 红
+                        android.content.res.ColorStateList track =
+                                new android.content.res.ColorStateList(
+                                        new int[][]{
+                                                {android.R.attr.state_checked},
+                                                {-android.R.attr.state_checked}},
+                                        new int[]{blue, red});
+                        sw.setTrackTintList(track);          // 打开=蓝、关闭=红
+                        sw.setThumbTintList(
+                                android.content.res.ColorStateList.valueOf(0xFFFFFFFF)); // thumb 白色
+                    } catch (Exception ignored) {
+                    }
+                    sw.setOnClickListener(v -> act.run());
+                    list.addView(menuCard(icons[g][i], titles[g][i], subs[g][i], act, sw));
+                } else {
+                    list.addView(menuCard(icons[g][i], titles[g][i], subs[g][i], act));
+                }
             }
         }
 
@@ -972,6 +1011,11 @@ public class NativeHome extends Activity {
 
     /** 菜单里一张可点的卡片：图标底块 + 标题 + 说明，带描边和涟漪。 */
     private View menuCard(int iconRes, String title, String sub, Runnable action) {
+        return menuCard(iconRes, title, sub, action, null);
+    }
+
+    /** 菜单行；trailing 非空时放在最右侧（如「隐藏最近任务」的开关）。 */
+    private View menuCard(int iconRes, String title, String sub, Runnable action, View trailing) {
         LinearLayout row = ui.row();
         GradientDrawable cardBg = ui.glowStroke(ui.col(M3.SURFACE_CONTAINER), 16,
                 ui.col(M3.OUTLINE_VARIANT), 1);
@@ -1008,6 +1052,14 @@ public class NativeHome extends Activity {
         st.setLineSpacing(ui.dp(1), 1f);
         st.setLayoutParams(ui.matchWrap(2));
         texts.addView(st);
+
+        if (trailing != null) {
+            LinearLayout.LayoutParams trlp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            trlp.leftMargin = ui.dp(8);
+            trlp.gravity = Gravity.CENTER_VERTICAL;
+            row.addView(trailing, trlp);
+        }
 
         row.setOnClickListener(v -> action.run());
         return row;
@@ -1057,6 +1109,12 @@ public class NativeHome extends Activity {
                         break;
                     case 5:
                         installAntigravityCli();
+                        break;
+                    case 6:
+                        pinWebKey();
+                        break;
+                    case 7:
+                        toggleHideRecents();
                         break;
                     default:
                         PowerLab.show(this, ui);
@@ -1193,6 +1251,75 @@ public class NativeHome extends Activity {
             cm.setPrimaryClip(ClipData.newPlainText("magpie", url));
         }
         toast("已复制上次网页地址");
+    }
+
+    /** 菜单「固定网关当前访问密钥（K值）」：确认后锁定当前 k，重启网关生效。 */
+    private void pinWebKey() {
+        final String k = Prefs.webKey(this);
+        if (isWebKeyLockedSafe()) {
+            AlertDialog dlg = new AlertDialog.Builder(this)
+                    .setTitle("固定访问密钥")
+                    .setMessage("当前 K 值已固定为 " + k)
+                    .setPositiveButton("知道了", null)
+                    .create();
+            styleDialog(dlg);
+            dlg.show();
+            return;
+        }
+        AlertDialog dlg = new AlertDialog.Builder(this)
+                .setTitle("固定访问密钥")
+                .setMessage("将把当前 K 值固定为：\n" + k
+                        + "\n\n之后重启网关/App 都不会变（清除 App 数据才会重置）。确定？")
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(android.R.string.ok, (d, w) -> {
+                    if (lockWebKeySafe()) {
+                        GatewayService.restart(this);
+                        toast("已固定，网关重启中…");
+                    } else {
+                        toast("固定失败：当前版本暂不支持");
+                    }
+                })
+                .create();
+        styleDialog(dlg);
+        dlg.show();
+    }
+
+    /** 反射调 Prefs.isWebKeyLocked(Context)（core 新增；未到位时按未锁定处理）。 */
+    private boolean isWebKeyLockedSafe() {
+        return Prefs.isWebKeyLocked(this);
+    }
+
+    /** 反射调 Prefs.lockWebKey(Context)（core 新增；成功返回 true）。 */
+    private boolean lockWebKeySafe() {
+        Prefs.lockWebKey(this);
+        return true;
+    }
+
+    /** 菜单「隐藏最近任务（防误删）」：AppTask.setExcludeFromRecents 立即生效，不重启不 finish。 */
+    private void toggleHideRecents() {
+        boolean newVal = !Prefs.hideFromRecents(this);
+        Prefs.setHideFromRecents(this, newVal);
+        applyHideFromRecents(this, newVal);
+        toast(newVal ? "已隐藏，最近任务里看不到 magpie 了" : "已恢复显示在最近任务");
+    }
+
+    /** 通过 Intent 标志把当前 task 从系统「最近任务」排除/恢复（Activity 无 setExcludeFromRecents，这是标准可用的做法）。 */
+    static void applyHideFromRecents(android.app.Activity act, boolean hide) {
+        try {
+            android.app.ActivityManager am = (android.app.ActivityManager) act.getSystemService(
+                    android.content.Context.ACTIVITY_SERVICE);
+            if (am == null) {
+                return;
+            }
+            java.util.List<android.app.ActivityManager.AppTask> tasks = am.getAppTasks();
+            if (tasks == null) {
+                return;
+            }
+            for (android.app.ActivityManager.AppTask t : tasks) {
+                t.setExcludeFromRecents(hide);   // 立即生效：true=移出最近任务，false=恢复
+            }
+        } catch (Throwable ignored) {
+        }
     }
 
     /** 用系统浏览器打开 magpie 网页（带 key，直接登进去）。 */

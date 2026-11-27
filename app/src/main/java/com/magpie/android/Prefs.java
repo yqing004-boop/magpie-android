@@ -23,6 +23,8 @@ public final class Prefs {
     public static final String HOST = "host";
     public static final String PORT = "port";
     public static final String WEBKEY = "webkey";
+    /** 固定（锁定）的网关访问密钥：非空时 webKey() 永远优先用它，避免意外重置后 k 变化。 */
+    public static final String WEBKEY_LOCKED = "webkey_locked";
     public static final String LAN = "lan";
     public static final String AUTOSTART = "autostart";
     public static final String UPDATE_FEED = "update_feed";
@@ -509,12 +511,35 @@ public final class Prefs {
     /** The key the Web UI asks for. Generated once and kept, so the WebView
      *  can be pointed at {@code /?k=…} without scraping magpie's stdout. */
     public static synchronized String webKey(Context ctx) {
+        // 已固定（locked 有效）就永远用它，不因任何重置而变。
+        String locked = sp(ctx).getString(WEBKEY_LOCKED, "");
+        if (locked != null && locked.length() >= 8) {
+            return locked;
+        }
         String k = sp(ctx).getString(WEBKEY, null);
         if (k == null || k.length() < 8) {
             k = newKey();
             sp(ctx).edit().putString(WEBKEY, k).apply();
         }
         return k;
+    }
+
+    /** 当前固定的 key（没固定返回 ""）。 */
+    public static synchronized String webKeyLocked(Context ctx) {
+        String v = sp(ctx).getString(WEBKEY_LOCKED, "");
+        return v == null ? "" : v;
+    }
+
+    /** 固定当前 key：把当前 webKey 写入 locked，并确保 WEBKEY 也是它。返回固定后的值。 */
+    public static synchronized String lockWebKey(Context ctx) {
+        String cur = webKey(ctx); // 现有：读 WEBKEY，空/短则生成
+        sp(ctx).edit().putString(WEBKEY_LOCKED, cur).putString(WEBKEY, cur).apply();
+        return cur;
+    }
+
+    /** 是否已固定 key。 */
+    public static boolean isWebKeyLocked(Context ctx) {
+        return !webKeyLocked(ctx).isEmpty();
     }
 
     public static void setHost(Context ctx, String h) {
@@ -557,6 +582,15 @@ public final class Prefs {
 
     public static void setLan(Context ctx, boolean on) {
         sp(ctx).edit().putBoolean(LAN, on).apply();
+    }
+
+    /** 是否从系统「最近任务/多任务」里隐藏（防手滑划掉）。 */
+    public static boolean hideFromRecents(Context ctx) {
+        return sp(ctx).getBoolean("hide_recents", false);
+    }
+
+    public static void setHideFromRecents(Context ctx, boolean on) {
+        sp(ctx).edit().putBoolean("hide_recents", on).apply();
     }
 
     public static void setAutostart(Context ctx, boolean on) {
